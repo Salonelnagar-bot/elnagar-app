@@ -269,287 +269,541 @@ function RadioGroup({options, value, onChange}) {
 }
 
 // ─── AGENDA ──────────────────────────────────────────────────────────────────
-function AgendaView() {
-  const [vue, setVue] = useState("semaine");
-  const [showRdvModal, setShowRdvModal] = useState(false);
-  const [showNotifs, setShowNotifs] = useState(false);
+const RDV_DATA_SEMAINE = {
+  // col index 0=Lun, 1=Mar, 2=Mer, 3=Jeu, 4=Ven, 5=Sam, 6=Dim
+  0: [
+    {id:1,h:"10:00",fin:"10:30",nom:"clim",prestation:"",c:"#9ca3af",icons:""},
+    {id:2,h:"10:30",fin:"11:30",nom:"Franck Gagnaire",prestation:"Coupe + Barbe Elnagar choisi(e)",c:"#4a9eff",icons:"@🔒👤"},
+    {id:3,h:"12:15",fin:"13:15",nom:"valentin boisgard",prestation:"Coupe + Barbe Elnagar choisi(e)",c:"#4a9eff",icons:"@🔒👤"},
+    {id:4,h:"14:00",fin:"14:45",nom:"Hugo Gabillet",prestation:"Coupe homme...",c:"#4a9eff",icons:"@🔒"},
+    {id:5,h:"14:45",fin:"15:30",nom:"Alexy Denis",prestation:"Coupe homme Elnagar...",c:"#4a9eff",icons:"@🔒"},
+    {id:6,h:"15:30",fin:"15:45",nom:"",prestation:"",c:"#f5c842",icons:""},
+    {id:7,h:"16:45",fin:"17:45",nom:"Brahim Maghza",prestation:"Coupe + Barbe Elnagar choisi(e)",c:"#4a9eff",icons:"@🔒👤"},
+    {id:8,h:"18:00",fin:"18:30",nom:"Mehdi...",prestation:"",c:"#4a9eff",icons:"@🔒👤"},
+    {id:9,h:"18:30",fin:"19:00",nom:"Nel...",prestation:"",c:"#4a9eff",icons:"@🔒👤"},
+  ],
+  1: [
+    {id:10,h:"10:00",fin:"10:45",nom:"Loic Baugé",prestation:"Coupe homme Elnaga...",c:"#4a9eff",icons:"@🔒👤"},
+    {id:11,h:"11:00",fin:"11:45",nom:"rocku philpe",prestation:"Coupe homme",c:"#20a090",icons:""},
+    {id:12,h:"11:45",fin:"12:30",nom:"Jerome Thisse",prestation:"Coupe homme Elnaga...",c:"#4a9eff",icons:"@🔒👤"},
+    {id:13,h:"13:00",fin:"14:00",nom:"Romain Poirrotte",prestation:"Coupe + Barbe Elnagar choisi(e)",c:"#4a9eff",icons:"@🔒👤"},
+    {id:14,h:"16:45",fin:"17:15",nom:"tidjane faresne...",prestation:"",c:"#20a090",icons:""},
+    {id:15,h:"17:15",fin:"18:00",nom:"Valentin Gabillet",prestation:"Coupe homme...",c:"#4a9eff",icons:"@🔒"},
+    {id:16,h:"18:00",fin:"19:00",nom:"Sebastien Pacheco",prestation:"Coupe + Barbe Elnagar choisi(e)",c:"#4a9eff",icons:"@🔒👤"},
+  ],
+  2: [
+    {id:17,h:"10:00",fin:"10:45",nom:"Romain Dugast",prestation:"Coupe homme Elnag...",c:"#4a9eff",icons:"@🔒"},
+    {id:18,h:"13:00",fin:"13:45",nom:"Kylian Bessonnier",prestation:"Coupe homme...",c:"#5cb85c",icons:"@🔒"},
+    {id:19,h:"14:30",fin:"15:00",nom:"",prestation:"",c:"#9ca3af",icons:""},
+    {id:20,h:"13:00",fin:"14:00",nom:"Dylan Charloix",prestation:"Coupe + Barbe Elnagar choisi(e)",c:"#4a9eff",icons:"@🔒"},
+  ],
+  3: [
+    {id:21,h:"10:45",fin:"11:30",nom:"saliba richard",prestation:"Coupe homme",c:"#5cb85c",icons:""},
+    {id:22,h:"11:30",fin:"12:15",nom:"Alain MICHEL",prestation:"Coupe homme...",c:"#4a9eff",icons:"@🔒"},
+    {id:23,h:"13:00",fin:"14:00",nom:"Dylan Charloix",prestation:"Coupe + Barbe Elnagar choisi(e)",c:"#4a9eff",icons:"@🔒"},
+    {id:24,h:"15:30",fin:"16:15",nom:"Colomban Goudesenne",prestation:"Coupe homme...",c:"#4a9eff",icons:"@🔒"},
+  ],
+  4: [
+    {id:25,h:"10:00",fin:"10:30",nom:"marcourt...",prestation:"",c:"#e8507a",icons:""},
+    {id:26,h:"10:30",fin:"10:50",nom:"marcourt...",prestation:"",c:"#9060e8",icons:""},
+    {id:27,h:"10:50",fin:"11:05",nom:"",prestation:"",c:"#9060e8",icons:""},
+    {id:28,h:"11:05",fin:"11:35",nom:"marcourt...",prestation:"",c:"#f0a050",icons:""},
+  ],
+  5: [
+    {id:29,h:"11:00",fin:"12:00",nom:"Vincent de CORBIER",prestation:"Coupe + Barbe Elnagar choisi(e)",c:"#4a9eff",icons:"@🔒"},
+    {id:30,h:"13:45",fin:"14:30",nom:"simon pradel",prestation:"Coupe homme Elnaga...",c:"#4a9eff",icons:"@🔒"},
+    {id:31,h:"14:30",fin:"15:30",nom:"Vincent Boutigny",prestation:"Coupe + Barbe",c:"#5cb85c",icons:""},
+    {id:32,h:"15:45",fin:"16:30",nom:"timothée Auber Laou-Hap",prestation:"Coupe...",c:"#4a9eff",icons:"@🔒"},
+  ],
+  6: [],
+};
+
+function AgendaView({showNotifsProp=false, onToggleNotifs}) {
+  const [vue, setVue] = useState("semaine"); // "semaine" | "jour"
   const [currentTime, setCurrentTime] = useState(now());
-  const [dragSlot, setDragSlot] = useState(null); // {col, startMin, endMin}
-  const [isDragging, setIsDragging] = useState(false);
-  const gridRef = useRef(null);
-  const heures = Array.from({length:13},(_,i)=>i+8);
-  const jours = ["Lun. 27/04","Mar. 28/04","Mer. 29/04","Jeu. 30/04","Ven. 01/05","Sam. 02/05","Dim. 03/05"];
+  const [showNotifs, setShowNotifs] = useState(showNotifsProp);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState(null); // index 0-6 for jour view
+  const [rdvList, setRdvList] = useState(RDV_DATA_SEMAINE);
+  const [showRdvModal, setShowRdvModal] = useState(false);
+  const [newRdvSlot, setNewRdvSlot] = useState(null); // {col, startMin, endMin}
+  const [tooltip, setTooltip] = useState(null); // {rdv, x, y}
+  const [dragState, setDragState] = useState(null); // {col, startMin, endMin, dragging}
 
-  const CELL_HEIGHT = 64; // px par heure
-  const START_HOUR = 8;
+  const CELL_H = 60; // px per hour
+  const START_H = 8;
+  const HOURS = Array.from({length:14}, (_,i)=>i+START_H); // 8h-21h
 
-  const getMinFromY = (y) => {
-    const raw = Math.floor(y / CELL_HEIGHT * 60);
-    return Math.round(raw / 15) * 15; // snap 15min
+  useEffect(()=>{const t=setInterval(()=>setCurrentTime(now()),60000);return()=>clearInterval(t);},[]);
+  useEffect(()=>setShowNotifs(showNotifsProp),[showNotifsProp]);
+
+  // Week days labels
+  const getWeekDays = () => {
+    const base = new Date(2026, 4, 4); // Mon 4 May 2026
+    base.setDate(base.getDate() + weekOffset * 7);
+    const days = [];
+    const jours = ["Lun.","Mar.","Mer.","Jeu.","Ven.","Sam.","Dim."];
+    const moisCourt = ["jan","fév","mar","avr","mai","juin","juil","août","sep","oct","nov","déc"];
+    for (let i=0; i<7; i++) {
+      const d = new Date(base); d.setDate(base.getDate()+i);
+      days.push({label:`${jours[i]} ${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`, date:d, dayIdx:i});
+    }
+    return days;
   };
 
-  const handleMouseDown = (e, colIndex) => {
-    if (e.target.closest('[data-rdv]')) return; // ne pas déclencher sur un rdv existant
+  const weekRange = () => {
+    const days = getWeekDays();
+    const f = days[0].date, l = days[6].date;
+    const m = ["jan","fév","mar","avr","mai","juin","juil","août","sep","oct","nov","déc"];
+    return `${String(f.getDate()).padStart(2,"0")}/${String(f.getMonth()+1).padStart(2,"0")} au ${String(l.getDate()).padStart(2,"0")}.${String(l.getMonth()+1).padStart(2,"0")}`;
+  };
+
+  const minToTop = (m) => (m - START_H*60) / 60 * CELL_H;
+  const yToMin = (y) => {
+    const raw = Math.floor(y / CELL_H * 60) + START_H*60;
+    return Math.round((raw - START_H*60) / 15) * 15 + START_H*60;
+  };
+  const minToHHMM = (m) => `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
+  const hmToMin = (hm) => { const [h,m]=hm.split(":"); return parseInt(h)*60+parseInt(m); };
+
+  // Drag handlers
+  const onMouseDown = (e, col) => {
+    if (e.target.closest("[data-rdv]")) return;
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const startMin = getMinFromY(y);
-    setDragSlot({col: colIndex, startMin, endMin: startMin + 30});
-    setIsDragging(true);
+    const startMin = yToMin(y);
+    setDragState({col, startMin, endMin:startMin+30, dragging:true});
   };
 
-  const handleMouseMove = (e, colIndex) => {
-    if (!isDragging || !dragSlot || dragSlot.col !== colIndex) return;
+  const onMouseMove = (e, col) => {
+    if (!dragState?.dragging || dragState.col!==col) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top;
-    const endMin = getMinFromY(y);
-    if (endMin > dragSlot.startMin) {
-      setDragSlot(s => ({...s, endMin}));
+    const endMin = yToMin(y);
+    if (endMin > dragState.startMin) setDragState(s=>({...s, endMin}));
+  };
+
+  const onMouseUp = (col) => {
+    if (dragState?.dragging && dragState.col===col && dragState.endMin - dragState.startMin >= 15) {
+      setNewRdvSlot({col, startMin:dragState.startMin, endMin:dragState.endMin, day:getWeekDays()[col]?.label||""});
+      setShowRdvModal(true);
     }
+    setDragState(null);
   };
 
-  const handleMouseUp = (colIndex) => {
-    if (isDragging && dragSlot && dragSlot.col === colIndex) {
-      setIsDragging(false);
-      if (dragSlot.endMin - dragSlot.startMin >= 15) {
-        setShowRdvModal(true);
-      }
-      setDragSlot(null);
-    }
+  const onAddRdv = (rdv) => {
+    setRdvList(prev => ({
+      ...prev,
+      [rdv.col]: [...(prev[rdv.col]||[]), {
+        id: Date.now(),
+        h: minToHHMM(rdv.startMin),
+        fin: minToHHMM(rdv.endMin),
+        nom: rdv.nom||"",
+        prestation: rdv.prestation||"",
+        c: rdv.couleur||"#c9a84c",
+        icons:"",
+      }]
+    }));
+    setShowRdvModal(false);
   };
 
-  const rdvSemaine = {
-    0:[{h:"10:45",fin:"11:30",nom:"Arthur Amar",prestation:"Coupe homme Elnagar",c:"#4a9eff"},{h:"11:30",fin:"12:15",nom:"Jérémy Bouirou",prestation:"Coupe homme",c:"#4a9eff"},{h:"12:15",fin:"13:00",nom:"Jacky AUBER LAOU-HAP",prestation:"Coupe",c:"#4a9eff"},{h:"13:00",fin:"14:00",nom:"SAM MIMOUN",prestation:"Coupe + Barbe Elnagar choisie",c:"#4a9eff"},{h:"14:15",fin:"14:45",nom:"Justin P",prestation:"Coupe homme",c:"#4a9eff"},{h:"15:15",fin:"15:45",nom:"Noa...",prestation:"Coupe",c:"#4a9eff"},{h:"16:30",fin:"17:15",nom:"Simon Mocquais",prestation:"Coupe homme",c:"#4a9eff"},{h:"17:15",fin:"18:00",nom:"Charles TROMPEAU",prestation:"Coupe homme",c:"#4a9eff"},{h:"18:00",fin:"18:45",nom:"Sebastien Joulin",prestation:"Coupe homme Elnag",c:"#4a9eff"}],
-    1:[{h:"10:30",fin:"11:30",nom:"Aurélien Jagueneau",prestation:"Coupe + Barbe Elnagar choisie",c:"#4a9eff"},{h:"12:30",fin:"13:15",nom:"Charly Manceau",prestation:"Coupe homme",c:"#4a9eff"},{h:"14:00",fin:"14:30",nom:"",prestation:"",c:"#9ca3af"},{h:"14:30",fin:"15:15",nom:"Arthur Verneau",prestation:"Coupe",c:"#ef4444"},{h:"15:30",fin:"16:15",nom:"Romain Cinelli-Petit",prestation:"Coupe homme",c:"#4a9eff"},{h:"16:15",fin:"17:00",nom:"Stéphane Blardat",prestation:"Coupe homme Elna",c:"#4a9eff"},{h:"17:45",fin:"18:15",nom:"Jean...",prestation:"",c:"#4a9eff"},{h:"18:15",fin:"19:00",nom:"Hugo ZOPPE",prestation:"Coupe homme Elna",c:"#4a9eff"}],
-    2:[{h:"11:15",fin:"12:00",nom:"Axel Merci",prestation:"Coupe homme Elnaga",c:"#4a9eff"},{h:"14:00",fin:"14:45",nom:"",prestation:"",c:"#9ca3af"},{h:"15:30",fin:"16:00",nom:"impot",prestation:"",c:"#9ca3af"},{h:"16:00",fin:"16:30",nom:"Maxime V",prestation:"",c:"#4a9eff"},{h:"16:30",fin:"17:00",nom:"Constant...",prestation:"",c:"#4a9eff"},{h:"17:00",fin:"17:30",nom:"Constant...",prestation:"",c:"#4a9eff"},{h:"17:30",fin:"18:00",nom:"Constant...",prestation:"",c:"#4a9eff"},{h:"18:15",fin:"19:00",nom:"Alexandre Vanhoove",prestation:"Coupe homme",c:"#4a9eff"}],
-    6:[{h:"19:15",fin:"19:45",nom:"kydra",prestation:"",c:"#9ca3af"}],
-  };
-
-  const toMin = (h,m) => parseInt(h)*60+parseInt(m||0);
-  const minToTop = (totalMin) => (totalMin - START_HOUR*60) / 60 * CELL_HEIGHT;
-
-  useEffect(()=>{const t=setInterval(()=>setCurrentTime(now()),60000);return()=>clearInterval(t);},[]);
+  const weekDays = getWeekDays();
+  const colsToShow = vue==="semaine" ? weekDays : (selectedDay!==null ? [weekDays[selectedDay]] : [weekDays[0]]);
+  const colData = vue==="semaine" ? rdvList : {0: rdvList[selectedDay!==null?selectedDay:0]||[]};
 
   return (
-    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
-      {/* Sidebar mini calendrier */}
-      <div style={{width:240,background:"#0d1b2a",borderRight:"1px solid #1e3a5f",padding:16,overflowY:"auto",flexShrink:0}}>
-        <MiniCalendrier />
-        <div style={{marginTop:16,paddingTop:16,borderTop:"1px solid #1e3a5f"}}>
-          <div style={{color:"#94a3b8",fontSize:11,fontWeight:600,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Mode Plusieurs agendas</div>
-          <label style={{display:"flex",alignItems:"center",gap:6,color:"#94a3b8",fontSize:13,cursor:"pointer",marginBottom:4}}>
-            <input type="radio" name="mode" defaultChecked style={{accentColor:"#c9a84c"}} /> Non
+    <div style={{display:"flex",flex:1,overflow:"hidden",background:"#fff"}}>
+      {/* Sidebar gauche */}
+      <div style={{width:240,background:"#0d1b2a",borderRight:"1px solid #1e3a5f",padding:"16px 12px",overflowY:"auto",flexShrink:0,display:"flex",flexDirection:"column",gap:0}}>
+        <MiniCalendrier
+          vue={vue}
+          weekOffset={weekOffset}
+          selectedDayDate={vue==="jour"&&selectedDay!==null ? weekDays[selectedDay]?.date : null}
+          activeWeekDates={weekDays.map(d=>d.date)}
+          onSelectDay={(date,dayIdx)=>{
+            // Calculate week offset from clicked date relative to base week (Mon 4 May 2026)
+            const base = new Date(2026, 4, 4);
+            const diffMs = date - base;
+            const diffDays = Math.floor(diffMs / (1000*60*60*24));
+            const newOffset = Math.floor(diffDays / 7);
+            setWeekOffset(newOffset);
+            setVue("semaine"); // always stay in semaine view
+          }}
+          onSelectWeek={()=>setVue("semaine")}
+          onPrevWeek={()=>setWeekOffset(w=>w-1)}
+          onNextWeek={()=>setWeekOffset(w=>w+1)}
+        />
+        <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid #e5e7eb"}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>MODE PLUSIEURS AGENDAS</div>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer",marginBottom:4,color:"#94a3b8"}}>
+            <input type="radio" name="mode_agenda" defaultChecked style={{accentColor:"#c9a84c"}} /> Non
           </label>
-          <label style={{display:"flex",alignItems:"center",gap:6,color:"#94a3b8",fontSize:13,cursor:"pointer"}}>
-            <input type="radio" name="mode" style={{accentColor:"#c9a84c"}} /> Oui
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer",color:"#94a3b8"}}>
+            <input type="radio" name="mode_agenda" style={{accentColor:"#c9a84c"}} /> Oui
           </label>
-          <div style={{marginTop:16,color:"#94a3b8",fontSize:11,fontWeight:600,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Équipe</div>
-          <label style={{display:"flex",alignItems:"center",gap:6,color:"#c9a84c",fontSize:13,cursor:"pointer"}}>
+          <div style={{marginTop:16,fontSize:11,fontWeight:600,color:"#94a3b8",marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>ÉQUIPE</div>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer",color:"#c9a84c"}}>
             <input type="radio" defaultChecked style={{accentColor:"#c9a84c"}} /> Elnagar
           </label>
         </div>
-        <div style={{position:"absolute",bottom:0,left:0,width:240,padding:"8px 16px",background:"#0d1b2a",borderTop:"1px solid #1e3a5f",color:"#94a3b8",fontSize:12}}>
+        <div style={{marginTop:"auto",paddingTop:8,borderTop:"1px solid #1e3a5f",fontSize:12,color:"#94a3b8"}}>
           <div>02/05/2026</div>
-          <div>0 RDV · <span style={{color:"#c9a84c"}}>0,00 €</span></div>
+          <div>0 RDV · <span style={{color:"#c9a84c",fontWeight:600}}>0,00 €</span></div>
         </div>
       </div>
 
-      {/* Grille agenda */}
-      <div style={{flex:1,overflow:"auto",background:"#fff"}}>
+      {/* Zone principale */}
+      <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column"}}>
         {/* Toolbar */}
-        <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#fff",borderBottom:"1px solid #e5e7eb",position:"sticky",top:0,zIndex:10}}>
-          <button style={{background:"#f3f4f6",color:"#374151",border:"1px solid #d1d5db",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:13}}>Aujourd'hui</button>
-          <button style={{background:"none",border:"none",color:"#374151",cursor:"pointer",fontSize:18}}>‹</button>
-          <button style={{background:"none",border:"none",color:"#374151",cursor:"pointer",fontSize:18}}>›</button>
-          <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
-            <button onClick={()=>setVue("jour")} style={{background:vue==="jour"?"#c9a84c":"#f3f4f6",color:vue==="jour"?"#fff":"#374151",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13}}>Vue jour</button>
-            <button onClick={()=>setVue("semaine")} style={{background:vue==="semaine"?"#c9a84c":"#f3f4f6",color:vue==="semaine"?"#fff":"#374151",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13}}>Vue semaine</button>
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 16px",borderBottom:"1px solid #e5e7eb",background:"#fff",position:"sticky",top:0,zIndex:10,flexShrink:0}}>
+          <button style={{background:"#f3f4f6",color:"#374151",border:"1px solid #e5e7eb",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13,fontWeight:500}}>Aujourd'hui</button>
+          <button onClick={()=>setWeekOffset(w=>w-1)} style={{background:"none",border:"none",color:"#374151",cursor:"pointer",fontSize:18,padding:"0 4px"}}>‹</button>
+          <button onClick={()=>setWeekOffset(w=>w+1)} style={{background:"none",border:"none",color:"#374151",cursor:"pointer",fontSize:18,padding:"0 4px"}}>›</button>
+          {vue==="semaine" && <span style={{fontSize:13,color:"#374151",fontWeight:500}}>{weekRange()}</span>}
+          {vue==="jour" && selectedDay!==null && <span style={{fontSize:13,color:"#374151",fontWeight:500}}>{weekDays[selectedDay]?.label}</span>}
+          <div style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
+            <div style={{display:"flex",border:"1px solid #e5e7eb",borderRadius:6,overflow:"hidden"}}>
+              <button onClick={()=>setVue("jour")} style={{padding:"5px 14px",background:vue==="jour"?"#fff":"#f9fafb",color:vue==="jour"?"#374151":"#6b7280",border:"none",cursor:"pointer",fontSize:13,fontWeight:vue==="jour"?600:400,borderRight:"1px solid #e5e7eb"}}>
+                Vue jour{vue==="jour"&&selectedDay!==null?` ${weekDays[selectedDay]?.date.getDate()} mai`:""}
+              </button>
+              <button onClick={()=>{setVue("semaine");}} style={{padding:"5px 14px",background:vue==="semaine"?"#c9a84c":"#f9fafb",color:vue==="semaine"?"#fff":"#6b7280",border:"none",cursor:"pointer",fontSize:13,fontWeight:vue==="semaine"?600:400}}>
+                Vue semaine
+              </button>
+            </div>
             <span style={{color:"#6b7280",fontSize:13}}>⏱ 15 min</span>
-            <span style={{color:"#374151",fontWeight:600,fontSize:15}}>{currentTime}</span>
+            <span style={{color:"#374151",fontWeight:600,fontSize:14}}>{currentTime}</span>
           </div>
         </div>
 
         {/* Grille */}
-        <div style={{display:"flex",minWidth:900}}>
-          <div style={{width:56,flexShrink:0}} />
-          {jours.map((j,i)=>(
-            <div key={i} style={{flex:1,textAlign:"center",padding:"8px 4px",borderLeft:"1px solid #e5e7eb",color:i===4?"#c9a84c":"#374151",fontSize:13,fontWeight:i===4?600:400,background:"#fff",position:"sticky",top:56,zIndex:9,borderBottom:"1px solid #e5e7eb"}}>
-              {j}
-            </div>
-          ))}
-        </div>
-
-        <div style={{display:"flex",position:"relative",minWidth:900}}>
-          {/* Heures */}
-          <div style={{width:56,flexShrink:0}}>
-            {heures.map(h=>(
-              <div key={h} style={{height:64,borderTop:"1px solid #e5e7eb",color:"#9ca3af",fontSize:11,paddingTop:4,paddingLeft:4}}>{h}:00</div>
+        <div style={{display:"flex",flex:1,overflowX:"auto"}}>
+          {/* Colonne heures */}
+          <div style={{width:52,flexShrink:0,paddingTop:36}}>
+            {HOURS.map(h=>(
+              <div key={h} style={{height:CELL_H,borderTop:"1px solid #e5e7eb",color:"#9ca3af",fontSize:11,paddingTop:3,paddingLeft:6,textAlign:"right",paddingRight:8}}>{h}:00</div>
             ))}
           </div>
-          {/* Colonnes */}
-          {jours.map((_,ci)=>(
-            <div
-              key={ci}
-              style={{flex:1,borderLeft:"1px solid #e5e7eb",position:"relative",minHeight:heures.length*CELL_HEIGHT,cursor:"crosshair",userSelect:"none"}}
-              onMouseDown={e=>handleMouseDown(e,ci)}
-              onMouseMove={e=>handleMouseMove(e,ci)}
-              onMouseUp={()=>handleMouseUp(ci)}
-              onMouseLeave={()=>{if(isDragging&&dragSlot?.col===ci){setIsDragging(false);setDragSlot(null);}}}
-            >
-              {heures.map(h=>(
-                <div key={h} style={{height:CELL_HEIGHT,borderTop:"1px solid #e5e7eb"}} />
-              ))}
-              {/* Drag preview */}
-              {isDragging && dragSlot?.col===ci && dragSlot.endMin>dragSlot.startMin && (
-                <div style={{position:"absolute",top:minToTop(dragSlot.startMin),left:2,right:2,height:(dragSlot.endMin-dragSlot.startMin)/60*CELL_HEIGHT-2,background:"rgba(201,168,76,0.35)",borderRadius:4,border:"2px dashed #c9a84c",pointerEvents:"none",zIndex:5,display:"flex",alignItems:"center",justifyContent:"center",color:"#c9a84c",fontSize:11,fontWeight:600}}>
-                  {`${String(Math.floor((START_HOUR*60+dragSlot.startMin)/60)).padStart(2,"0")}:${String((START_HOUR*60+dragSlot.startMin)%60).padStart(2,"0")} → ${String(Math.floor((START_HOUR*60+dragSlot.endMin)/60)).padStart(2,"0")}:${String((START_HOUR*60+dragSlot.endMin)%60).padStart(2,"0")}`}
-                </div>
-              )}
-              {(rdvSemaine[ci]||[]).map((rdv,ri)=>{
-                const [hh,mm] = rdv.h.split(":");
-                const [fhh,fmm] = rdv.fin.split(":");
-                const top = (parseInt(hh)*60+parseInt(mm) - START_HOUR*60)/60*CELL_HEIGHT;
-                const height = ((parseInt(fhh)*60+parseInt(fmm))-(parseInt(hh)*60+parseInt(mm)))/60*CELL_HEIGHT-2;
-                return (
-                  <div data-rdv="1" key={ri} onClick={e=>{e.stopPropagation();setShowRdvModal(true);}} style={{position:"absolute",top,left:2,right:2,height,background:rdv.c+"dd",borderRadius:4,padding:"2px 4px",overflow:"hidden",cursor:"pointer",fontSize:11,color:"#fff",borderLeft:`3px solid ${rdv.c}`,zIndex:4}}>
-                    <div style={{fontWeight:600}}>{rdv.h} - {rdv.fin}</div>
-                    {rdv.nom && <div>{rdv.nom}</div>}
-                    {rdv.prestation && <div style={{opacity:0.85}}>{rdv.prestation}</div>}
+
+          {/* Colonnes jours */}
+          <div style={{display:"flex",flex:1,minWidth:colsToShow.length===1?300:700}}>
+            {colsToShow.map((day,ci)=>{
+              const colIdx = vue==="jour" ? (selectedDay!==null?selectedDay:0) : ci;
+              const rdvs = colData[ci] || [];
+              const isToday = day.date.getDate()===2 && day.date.getMonth()===4; // 2 mai
+              return (
+                <div key={ci} style={{flex:1,borderLeft:"1px solid #e5e7eb",display:"flex",flexDirection:"column",minWidth:vue==="jour"?0:120}}>
+                  {/* Header jour */}
+                  <div onClick={()=>{ if(vue==="semaine"){setSelectedDay(colIdx);setVue("jour");}}} style={{height:36,borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:isToday?700:500,color:isToday?"#c9a84c":"#374151",background:isToday?"#fffbeb":"#fff",cursor:vue==="semaine"?"pointer":"default",position:"sticky",top:0,zIndex:8}}>
+                    {isToday && <span style={{background:"#c9a84c",color:"#fff",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,marginRight:4}}>{day.date.getDate()}</span>}
+                    {day.label}
                   </div>
-                );
-              })}
-            </div>
-          ))}
+                  {/* Cellules */}
+                  <div
+                    style={{position:"relative",flex:1,cursor:"crosshair",userSelect:"none"}}
+                    onMouseDown={e=>onMouseDown(e,colIdx)}
+                    onMouseMove={e=>onMouseMove(e,colIdx)}
+                    onMouseUp={()=>onMouseUp(colIdx)}
+                    onMouseLeave={()=>{ if(dragState?.col===colIdx) setDragState(null); }}
+                  >
+                    {HOURS.map(h=>(
+                      <div key={h} style={{height:CELL_H,borderTop:"1px solid #e5e7eb",position:"relative"}}>
+                        <div style={{position:"absolute",top:"50%",left:0,right:0,borderTop:"1px dashed #f3f4f6"}} />
+                      </div>
+                    ))}
+
+                    {/* Ligne heure actuelle */}
+                    {isToday && (() => {
+                      const [hh,mm] = currentTime.split(":");
+                      const top = minToTop(parseInt(hh)*60+parseInt(mm));
+                      return top>=0 && top<HOURS.length*CELL_H ? (
+                        <div style={{position:"absolute",top,left:0,right:0,height:2,background:"#ef4444",zIndex:6,pointerEvents:"none"}}>
+                          <div style={{position:"absolute",left:-4,top:-4,width:10,height:10,borderRadius:"50%",background:"#ef4444"}} />
+                        </div>
+                      ):null;
+                    })()}
+
+                    {/* Drag preview */}
+                    {dragState?.dragging && dragState.col===colIdx && dragState.endMin>dragState.startMin && (
+                      <div style={{position:"absolute",top:minToTop(dragState.startMin),left:2,right:2,height:(dragState.endMin-dragState.startMin)/60*CELL_H-2,background:"rgba(201,168,76,0.25)",borderRadius:4,border:"2px dashed #c9a84c",pointerEvents:"none",zIndex:7,display:"flex",alignItems:"center",justifyContent:"center",color:"#c9a84c",fontSize:11,fontWeight:600}}>
+                        {minToHHMM(dragState.startMin)} → {minToHHMM(dragState.endMin)}
+                      </div>
+                    )}
+
+                    {/* RDV */}
+                    {rdvs.map((rdv)=>{
+                      const top = minToTop(hmToMin(rdv.h));
+                      const h = hmToMin(rdv.fin) - hmToMin(rdv.h);
+                      const height = h/60*CELL_H - 2;
+                      if (height < 4) return null;
+                      return (
+                        <div
+                          data-rdv="1"
+                          key={rdv.id}
+                          onClick={e=>{e.stopPropagation(); setShowRdvModal(true); setNewRdvSlot({...rdv, col:colIdx, edit:true});}}
+                          onMouseEnter={e=>setTooltip({rdv, x:e.clientX, y:e.clientY})}
+                          onMouseLeave={()=>setTooltip(null)}
+                          style={{position:"absolute",top,left:2,right:2,height,background:rdv.c+"e6",borderRadius:4,padding:"2px 5px",overflow:"hidden",cursor:"pointer",fontSize:11,color:"#fff",borderLeft:`3px solid ${rdv.c}`,zIndex:4,boxShadow:"0 1px 3px rgba(0,0,0,0.15)"}}
+                        >
+                          <div style={{fontWeight:600,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rdv.h} - {rdv.fin} {rdv.nom}</div>
+                          {height>28 && rdv.prestation && <div style={{opacity:0.9,fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rdv.prestation}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {showRdvModal && <ModalRDV onClose={()=>setShowRdvModal(false)} />}
+      {/* Tooltip survol RDV */}
+      {tooltip && (
+        <div style={{position:"fixed",left:tooltip.x+12,top:tooltip.y-10,background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:"10px 14px",boxShadow:"0 4px 16px rgba(0,0,0,0.15)",zIndex:1000,pointerEvents:"none",minWidth:160,maxWidth:260}}>
+          <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>{tooltip.rdv.h} - {tooltip.rdv.fin}</div>
+          {tooltip.rdv.nom && <div style={{fontSize:13,color:"#374151"}}>{tooltip.rdv.nom}</div>}
+          {tooltip.rdv.prestation && <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{tooltip.rdv.prestation}</div>}
+        </div>
+      )}
 
-      {/* Panel notifications (sidebar droite) */}
+      {/* Panel notifications */}
       {showNotifs && (
-        <div style={{width:340,background:"#fff",borderLeft:"1px solid #e5e7eb",overflowY:"auto",flexShrink:0,padding:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{width:340,background:"#fff",borderLeft:"1px solid #e5e7eb",overflowY:"auto",flexShrink:0}}>
+          <div style={{padding:"16px 20px",borderBottom:"1px solid #e5e7eb",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontWeight:700,fontSize:16}}>Notifications</span>
             <button onClick={()=>setShowNotifs(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#9ca3af"}}>×</button>
           </div>
-          <div style={{fontWeight:600,fontSize:13,color:"#374151",marginBottom:12}}>À LA UNE</div>
-          <div style={{background:"#f9fafb",borderRadius:8,padding:12,marginBottom:12,fontWeight:600,fontSize:13,color:"#374151"}}>En avril</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-            <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:12}}>
-              <div style={{fontSize:28,fontWeight:700,color:"#c9a84c"}}>76</div>
-              <div style={{fontSize:12,color:"#374151",fontWeight:600}}>Nouveaux clients</div>
-              <div style={{fontSize:11,color:"#6b7280"}}>dont 69 en ligne (91 %)</div>
+          <div style={{padding:16}}>
+            <div style={{fontWeight:600,fontSize:12,color:"#374151",marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>À LA UNE</div>
+            <div style={{background:"#f9fafb",borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:13,color:"#374151",fontWeight:500}}>En avril</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+              {[{n:"76",l:"Nouveaux clients",s:"dont 69 en ligne (91 %)",c:"#c9a84c"},{n:"204",l:"RDV pris",s:"dont 179 en ligne (88 %)",c:"#4a9eff"}].map(k=>(
+                <div key={k.l} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:12}}>
+                  <div style={{fontSize:26,fontWeight:700,color:k.c}}>{k.n}</div>
+                  <div style={{fontSize:12,fontWeight:600,color:"#374151"}}>{k.l}</div>
+                  <div style={{fontSize:11,color:"#6b7280"}}>{k.s}</div>
+                </div>
+              ))}
             </div>
-            <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:12}}>
-              <div style={{fontSize:28,fontWeight:700,color:"#4a9eff"}}>204</div>
-              <div style={{fontSize:12,color:"#374151",fontWeight:600}}>RDV pris</div>
-              <div style={{fontSize:11,color:"#6b7280"}}>dont 179 en ligne (88 %)</div>
+            <div style={{color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline",marginBottom:16}}>📊 Voir le rapport complet</div>
+            {[{t:"Vous avez 1 avis à modérer",d:"Il y a 4 jours"},{t:"Vous avez 1 avis à modérer",d:"Il y a 7 jours"},{t:"Vous avez 1 avis à modérer",d:"Il y a 8 jours"}].map((n,i)=>(
+              <div key={i} style={{padding:"11px 0",borderBottom:"1px solid #f3f4f6",fontSize:13}}>
+                <div style={{color:"#374151"}}>{n.t}</div>
+                <div style={{color:"#9ca3af",fontSize:12,marginTop:2}}>{n.d}</div>
+              </div>
+            ))}
+            <div style={{marginTop:16,display:"flex",gap:16}}>
+              <span style={{color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>↩ Gérer mes avis</span>
+              <span style={{color:"#6b7280",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>❓ Consultez notre centre d'aide</span>
             </div>
-          </div>
-          <div style={{color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline",marginBottom:16}}>📊 Voir le rapport complet</div>
-          {[{t:"Vous avez 1 avis à modérer",d:"Il y a 3 jours"},{t:"Vous avez 1 avis à modérer",d:"Il y a 6 jours"},{t:"Vous avez 1 avis à modérer",d:"Il y a 7 jours"}].map((n,i)=>(
-            <div key={i} style={{padding:"12px 0",borderBottom:"1px solid #f3f4f6",fontSize:13,color:"#374151"}}>
-              <div>{n.t}</div>
-              <div style={{color:"#9ca3af",fontSize:12,marginTop:2}}>{n.d}</div>
-            </div>
-          ))}
-          <div style={{marginTop:16,display:"flex",gap:12}}>
-            <span style={{color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>↩ Gérer mes avis</span>
           </div>
         </div>
       )}
+
+      {showRdvModal && <ModalRDV onClose={()=>{setShowRdvModal(false);setNewRdvSlot(null);}} slot={newRdvSlot} onAdd={onAddRdv} />}
     </div>
   );
 }
 
-function MiniCalendrier() {
-  const [mois, setMois] = useState(3); // Avril = 3
+function MiniCalendrier({vue, weekOffset=0, selectedDayDate, activeWeekDates=[], onSelectDay, onSelectWeek, onPrevWeek, onNextWeek}) {
+  const [mois, setMois] = useState(4); // Mai = 4
   const [annee] = useState(2026);
+
+  // Sync month when week changes — follow the first day of active week
+  useEffect(()=>{
+    if(activeWeekDates.length>0){
+      const d = activeWeekDates[0];
+      setMois(d.getMonth());
+    }
+  },[weekOffset]);
+
   const premier = new Date(annee,mois,1).getDay();
   const decalage = premier===0?6:premier-1;
   const nbJours = new Date(annee,mois+1,0).getDate();
   const cases = Array(decalage).fill(null).concat(Array.from({length:nbJours},(_,i)=>i+1));
   while(cases.length%7!==0) cases.push(null);
 
+  const rows = [];
+  for(let i=0;i<cases.length;i+=7) rows.push(cases.slice(i,i+7));
+
+  const todayD = 2, todayM = 4, todayY = 2026;
+
+  const activeWeekSet = new Set(activeWeekDates.map(d=>`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`));
+  const selectedKey = selectedDayDate ? `${selectedDayDate.getFullYear()}-${selectedDayDate.getMonth()}-${selectedDayDate.getDate()}` : null;
+
+  const isToday = (d) => d===todayD && mois===todayM && annee===todayY;
+  const isSelected = (d) => selectedKey === `${annee}-${mois}-${d}`;
+  const isActiveWeek = (d) => activeWeekSet.has(`${annee}-${mois}-${d}`);
+
   return (
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-        <span style={{color:"#e2e8f0",fontWeight:600,fontSize:14}}>{MOIS_NOMS[mois]} {annee}</span>
-        <div style={{display:"flex",gap:4}}>
-          <button onClick={()=>setMois(m=>Math.max(0,m-1))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:16}}>‹</button>
-          <button onClick={()=>setMois(m=>Math.min(11,m+1))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:16}}>›</button>
+        <span style={{fontWeight:600,fontSize:14,color:"#e2e8f0"}}>{MOIS_NOMS[mois]} {annee}</span>
+        <div style={{display:"flex",gap:2}}>
+          <button onClick={onPrevWeek} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:16,padding:"0 4px"}}>‹</button>
+          <button onClick={onNextWeek} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:16,padding:"0 4px"}}>›</button>
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
         {["L","M","M","J","V","S","D"].map((d,i)=>(
-          <div key={i} style={{textAlign:"center",color:"#4a6a8a",fontSize:11,padding:"2px 0"}}>{d}</div>
+          <div key={i} style={{textAlign:"center",color:"#4a6a8a",fontSize:11,padding:"3px 0",fontWeight:500}}>{d}</div>
         ))}
-        {cases.map((d,i)=>(
-          <div key={i} style={{textAlign:"center",fontSize:12,padding:"3px 0",borderRadius:4,cursor:d?"pointer":"default",color:d===2?"#fff":d?"#94a3b8":"transparent",background:d===2?"#c9a84c":"transparent",fontWeight:d===2?600:400}}>
-            {d||""}
-          </div>
+        {rows.map((row,ri)=>(
+          row.map((d,ci)=>{
+            const today = isToday(d);
+            const selected = d && isSelected(d);
+            const inWeek = d && isActiveWeek(d);
+            const isFirst = inWeek && (!row[ci-1] || !isActiveWeek(row[ci-1]));
+            const isLast = inWeek && (!row[ci+1] || !isActiveWeek(row[ci+1]));
+
+            let bg = "transparent";
+            let color = d ? "#94a3b8" : "transparent"; // light text on dark bg
+            let borderRadius = "4px";
+            let fontWeight = 400;
+
+            if (inWeek && vue==="semaine") {
+              bg = today ? "#c9a84c" : "#fef9e7";
+              color = today ? "#fff" : "#374151"; // dark text on light yellow band
+              fontWeight = today ? 700 : 400;
+              borderRadius = isFirst && isLast ? "4px" : isFirst ? "4px 0 0 4px" : isLast ? "0 4px 4px 0" : "0";
+            } else if (selected && vue==="jour") {
+              bg = "#c9a84c";
+              color = "#fff";
+              fontWeight = 700;
+              borderRadius = "4px";
+            } else if (today) {
+              bg = "#c9a84c";
+              color = "#fff";
+              fontWeight = 700;
+              borderRadius = "50%";
+            }
+
+            return (
+              <div
+                key={`${ri}-${ci}`}
+                onClick={()=>{
+                  if(d){
+                    // Always stay in semaine mode, just navigate to the week containing this day
+                    onSelectDay && onSelectDay(new Date(annee,mois,d), ci);
+                  }
+                }}
+                style={{textAlign:"center",fontSize:12,padding:"4px 2px",borderRadius,cursor:d?"pointer":"default",color,background:bg,fontWeight,transition:"background 0.15s"}}
+              >
+                {d||""}
+              </div>
+            );
+          })
         ))}
       </div>
     </div>
   );
 }
 
-function ModalRDV({onClose}) {
+function ModalRDV({onClose, slot, onAdd}) {
+  const [nom, setNom] = useState("");
+  const [prestation, setPrestation] = useState(null);
+  const [couleur, setCouleur] = useState("#4a9eff");
+  const [note, setNote] = useState("");
   const [clientSearch, setClientSearch] = useState("");
   const [selectedClient, setSelectedClient] = useState(null);
-  const [selectedPrestation, setSelectedPrestation] = useState(null);
+  const [tab, setTab] = useState("prestation"); // prestation | client
   const filtered = CLIENTS_DATA.filter(c=>c.nom.toLowerCase().includes(clientSearch.toLowerCase())||c.tel.includes(clientSearch));
 
+  const allPrestations = Object.values(PRESTATIONS_CAISSE).flat();
+
+  const minToHHMM = (m) => `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
+
+  const defaultH = slot?.h || (slot?.startMin ? minToHHMM(slot.startMin) : "10:00");
+  const defaultFin = slot?.fin || (slot?.endMin ? minToHHMM(slot.endMin) : "10:30");
+  const [heure, setHeure] = useState(defaultH);
+  const [heureFin, setHeureFin] = useState(defaultFin);
+
   return (
-    <Modal title="Nouveau rendez-vous" onClose={onClose} width="680px">
-      <div style={{display:"flex",flexDirection:"column",gap:16}}>
-        <div>
-          <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>CLIENT</label>
-          <input value={clientSearch} onChange={e=>setClientSearch(e.target.value)} placeholder="Rechercher un client..." style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
-          {clientSearch && !selectedClient && (
-            <div style={{border:"1px solid #e5e7eb",borderRadius:6,marginTop:4,maxHeight:160,overflowY:"auto"}}>
-              {filtered.slice(0,6).map(c=>(
-                <div key={c.id} onClick={()=>{setSelectedClient(c);setClientSearch(c.nom);}} style={{padding:"8px 12px",cursor:"pointer",fontSize:14,borderBottom:"1px solid #f3f4f6"}} onMouseEnter={e=>e.target.style.background="#f9fafb"} onMouseLeave={e=>e.target.style.background=""}>
-                  <strong>{c.nom}</strong> — {c.tel}
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:10,width:560,maxWidth:"95vw",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{padding:"14px 20px",borderBottom:"1px solid #e5e7eb",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontWeight:600,fontSize:16}}>{slot?.edit?"Modifier le rendez-vous":"Nouveau rendez-vous"}</span>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{background:"#f3f4f6",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13}}>Annuler</button>
+            <button onClick={()=>onAdd({...slot, nom, prestation:prestation?.nom||"", couleur, note, client:selectedClient})} style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"5px 16px",cursor:"pointer",fontSize:13,fontWeight:600}}>Enregistrer</button>
+          </div>
+        </div>
+        <div style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+          {/* Date & heure */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div>
+              <div style={{fontSize:11,color:"#6b7280",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Début</div>
+              <input type="time" value={heure} onChange={e=>setHeure(e.target.value)} style={{width:"100%",padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+            </div>
+            <div>
+              <div style={{fontSize:11,color:"#6b7280",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Fin</div>
+              <input type="time" value={heureFin} onChange={e=>setHeureFin(e.target.value)} style={{width:"100%",padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+            </div>
+          </div>
+          {/* Onglets client / prestation */}
+          <div style={{display:"flex",borderBottom:"1px solid #e5e7eb",gap:0}}>
+            {["client","prestation"].map(t=>(
+              <div key={t} onClick={()=>setTab(t)} style={{padding:"8px 16px",cursor:"pointer",fontSize:13,fontWeight:tab===t?600:400,color:tab===t?"#c9a84c":"#6b7280",borderBottom:tab===t?"2px solid #c9a84c":"2px solid transparent"}}>
+                {t==="client"?"Client":"Prestation"}
+              </div>
+            ))}
+          </div>
+          {tab==="client" && (
+            <div>
+              <div style={{position:"relative"}}>
+                <input value={clientSearch} onChange={e=>{setClientSearch(e.target.value);setSelectedClient(null);}} placeholder="Rechercher un client..." style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+                {clientSearch && !selectedClient && (
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e5e7eb",borderRadius:6,zIndex:10,boxShadow:"0 4px 12px rgba(0,0,0,0.1)",maxHeight:180,overflowY:"auto"}}>
+                    {filtered.slice(0,6).map(c=>(
+                      <div key={c.id} onClick={()=>{setSelectedClient(c);setClientSearch(c.nom);setNom(c.nom);}} style={{padding:"8px 12px",cursor:"pointer",fontSize:13,borderBottom:"1px solid #f3f4f6"}} onMouseEnter={e=>e.currentTarget.style.background="#f9fafb"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                        <strong>{c.nom}</strong> <span style={{color:"#9ca3af"}}>{c.tel}</span>
+                      </div>
+                    ))}
+                    <div style={{padding:"8px 12px",color:"#c9a84c",cursor:"pointer",fontSize:13}}>+ Créer un nouveau client</div>
+                  </div>
+                )}
+              </div>
+              {selectedClient && (
+                <div style={{marginTop:8,padding:"8px 12px",background:"#f9fafb",borderRadius:6,fontSize:13,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontWeight:600}}>{selectedClient.nom}</div>
+                    <div style={{color:"#6b7280"}}>{selectedClient.tel} · {selectedClient.email}</div>
+                  </div>
+                  <button onClick={()=>{setSelectedClient(null);setClientSearch("");}} style={{background:"none",border:"none",cursor:"pointer",color:"#9ca3af",fontSize:16}}>×</button>
                 </div>
-              ))}
-              <div style={{padding:"8px 12px",color:"#c9a84c",cursor:"pointer",fontSize:13}}>+ Créer un nouveau client</div>
+              )}
             </div>
           )}
-        </div>
-        <div>
-          <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>PRESTATION</label>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,maxHeight:200,overflowY:"auto"}}>
-            {Object.entries(PRESTATIONS_CAISSE).map(([cat,prests])=>
-              prests.map(p=>(
-                <div key={p.id} onClick={()=>setSelectedPrestation(p)} style={{padding:"8px 12px",border:`2px solid ${selectedPrestation?.id===p.id?"#c9a84c":"#e5e7eb"}`,borderRadius:6,cursor:"pointer",background:selectedPrestation?.id===p.id?"#fdf8ed":"#fff",fontSize:13}}>
-                  <div style={{fontWeight:500}}>{p.nom}</div>
-                  <div style={{color:"#c9a84c",fontSize:12}}>{p.duree>0?`${p.duree} min · `:""}{p.prix===0?"Gratuit":`${p.prix},00 €`}</div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          {tab==="prestation" && (
+            <div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,maxHeight:220,overflowY:"auto"}}>
+                {allPrestations.map(p=>(
+                  <div key={p.id} onClick={()=>{setPrestation(p);setCouleur(p.couleur);}} style={{padding:"8px 12px",border:`2px solid ${prestation?.id===p.id?p.couleur:"#e5e7eb"}`,borderRadius:6,cursor:"pointer",background:prestation?.id===p.id?"#fffbeb":"#fff",fontSize:13}} onMouseEnter={e=>e.currentTarget.style.borderColor=p.couleur} onMouseLeave={e=>{if(prestation?.id!==p.id)e.currentTarget.style.borderColor="#e5e7eb";}}>
+                    <div style={{fontWeight:500,borderLeft:`3px solid ${p.couleur}`,paddingLeft:6}}>{p.nom}</div>
+                    <div style={{color:"#9ca3af",fontSize:11,paddingLeft:9}}>{p.duree>0?`${p.duree} min · `:""}{p.prix===0?"Gratuit":`${p.prix} €`}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Note */}
           <div>
-            <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>DATE</label>
-            <input type="date" defaultValue="2026-05-02" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+            <div style={{fontSize:11,color:"#6b7280",marginBottom:4,fontWeight:600,textTransform:"uppercase"}}>Note</div>
+            <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Titre ou note..." style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,minHeight:50,resize:"vertical",boxSizing:"border-box"}} />
           </div>
+          {/* Couleur RDV */}
           <div>
-            <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>HEURE</label>
-            <input type="time" defaultValue="10:00" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+            <div style={{fontSize:11,color:"#6b7280",marginBottom:6,fontWeight:600,textTransform:"uppercase"}}>Couleur du RDV</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {["#4a9eff","#5cb85c","#20a090","#f0a050","#e8507a","#9060e8","#ef4444","#f5c842","#9ca3af","#c9a84c"].map(c=>(
+                <div key={c} onClick={()=>setCouleur(c)} style={{width:24,height:24,background:c,borderRadius:4,cursor:"pointer",border:couleur===c?"3px solid #374151":"2px solid transparent"}} />
+              ))}
+            </div>
           </div>
-        </div>
-        <div>
-          <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>NOTE</label>
-          <textarea placeholder="Titre ou note..." style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,minHeight:60,resize:"vertical",boxSizing:"border-box"}} />
-        </div>
-        <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-          <Btn variant="secondary" onClick={onClose}>Annuler</Btn>
-          <Btn onClick={onClose}>Enregistrer</Btn>
         </div>
       </div>
-    </Modal>
+    </div>
   );
 }
 
@@ -2506,7 +2760,7 @@ export default function App() {
 
       {/* Content */}
       <div style={{display:"flex",flex:1,overflow:"hidden"}}>
-        {tab==="Agenda" && <AgendaView />}
+        {tab==="Agenda" && <AgendaView showNotifsProp={showNotifs} onToggleNotifs={()=>setShowNotifs(s=>!s)} />}
         {tab==="Caisse" && <CaisseView />}
         {tab==="Clients" && <ClientsView />}
         {tab==="Admin" && <AdminView />}
