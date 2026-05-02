@@ -1,1028 +1,2144 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
-const SB="https://blqvqhqfsrafpmheuhcx.supabase.co/rest/v1";
-const KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJscXZxaHFmc3JhZnBtaGV1aGN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzM2NDMsImV4cCI6MjA5MzE0OTY0M30.jMeTPqvkyw8zXpiigQBndMVOBIuHtYQ5cqe_TJY7WRk";
-const H={"Content-Type":"application/json",apikey:KEY,Authorization:`Bearer ${KEY}`,Prefer:"return=representation"};
-const db={
-  get:(t,q="")=>fetch(`${SB}/${t}?${q}`,{headers:H}).then(r=>r.json()),
-  post:(t,b)=>fetch(`${SB}/${t}`,{method:"POST",headers:H,body:JSON.stringify(b)}).then(r=>r.json()),
-  patch:(t,id,b)=>fetch(`${SB}/${t}?id=eq.${id}`,{method:"PATCH",headers:{...H,Prefer:"return=minimal"},body:JSON.stringify(b)}),
-  del:(t,id)=>fetch(`${SB}/${t}?id=eq.${id}`,{method:"DELETE",headers:H}),
+// ─── PALETTE ──────────────────────────────────────────────────────────────────
+const PALETTE = [
+  ["#6cb8f5","#5cb85c","#f0a050","#f07090","#b085f5","#f08070","#40c0b0","#f5c842"],
+  ["#4a9eff","#3d9e3d","#e8882a","#e8507a","#9060e8","#e86050","#20a090","#e8b020"],
+  ["#2878e0","#267826","#d06010","#d02860","#7040d0","#d04030","#007878","#c08000"],
+  ["#1050b8","#185018","#a83800","#a80040","#5020a8","#a82010","#005050","#906000"],
+  ["#0a2878","#0a2808","#781800","#780020","#300878","#780000","#002828","#604000"],
+];
+
+// ─── DATA ─────────────────────────────────────────────────────────────────────
+const PRESTATIONS_CAISSE = {
+  "Prestations": [
+    {id:1,nom:"Offre de bienvenue",duree:15,prix:0,couleur:"#f5c842"},
+    {id:2,nom:"Coupe homme",duree:45,prix:30,couleur:"#4a9eff"},
+    {id:3,nom:"Coupe + Barbe",duree:60,prix:55,couleur:"#5cb85c"},
+    {id:4,nom:"Coupe +barbe +soin visage",duree:90,prix:85,couleur:"#e8507a"},
+    {id:5,nom:"barbe",duree:30,prix:25,couleur:"#f0a050"},
+    {id:6,nom:"Coupe transformation",duree:45,prix:38,couleur:"#d02860"},
+    {id:7,nom:"Coupe étudiant",duree:30,prix:25,couleur:"#9060e8"},
+    {id:8,nom:"Moustache / bouc",duree:10,prix:10,couleur:"#f0a050"},
+    {id:9,nom:"Coupe (-17)",duree:30,prix:25,couleur:"#20a090"},
+    {id:10,nom:"Coupe (-10 ans)",duree:30,prix:20,couleur:"#5cb85c"},
+  ],
+  "Soins & entretien": [
+    {id:11,nom:"Soin Visage",duree:30,prix:25,couleur:"#4a9eff"},
+    {id:12,nom:"Soin Kératine",duree:90,prix:95,couleur:"#5cb85c"},
+    {id:13,nom:"Traitement cuir chevelu",duree:45,prix:55,couleur:"#e8507a"},
+  ],
+  "Couleur & techniques": [
+    {id:14,nom:"Balayage",duree:150,prix:180,couleur:"#f5c842"},
+    {id:15,nom:"Coloration",duree:120,prix:120,couleur:"#f0a050"},
+    {id:16,nom:"Mèches",duree:120,prix:150,couleur:"#9060e8"},
+    {id:17,nom:"Ombre",duree:120,prix:140,couleur:"#d02860"},
+  ],
+  "Bons cadeaux": [
+    {id:18,nom:"Bon cadeau 50€",duree:0,prix:50,couleur:"#c9a84c"},
+    {id:19,nom:"Bon cadeau 100€",duree:0,prix:100,couleur:"#c9a84c"},
+  ],
 };
 
-const gold="#c9a84c",navy="#0d1b2a",navyL="#112236",navyLL="#162d44",bord="#1e3354";
-const white="#f0ece4",muted="#8a8070",green="#2ecc71",red="#e05050",amber="#f0a030";
-// Couleurs agenda bleu marine
-const agBg="#0f2035",agBgAlt="#0d1b2a",agLine="#1a3050",agLineAlt="#152840";
-const agText="#c8d8e8",agTextMuted="#5a7a9a";
-
-const HOURS=[];
-for(let h=8;h<=20;h++){HOURS.push(`${String(h).padStart(2,"0")}:00`);HOURS.push(`${String(h).padStart(2,"0")}:30`);}
-const JOURS=["Lun","Mar","Mer","Jeu","Ven","Sam"];
-const MOIS=["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-const CATS=["Coupe","Barbe","Couleur","Soin","Autre"];
-
-const todayStr=()=>new Date().toISOString().split("T")[0];
-const fmt3=ds=>{try{const[y,m,d]=ds.split("-");return`${d}/${m}/${y}`;}catch{return ds;}};
-const fmt2=ds=>{try{const[,m,d]=ds.split("-");return`${d}/${m}`;}catch{return ds;}};
-const eur=v=>`${Number(v||0).toFixed(2).replace(".",",")} €`;
-const getDOW=base=>{
-  const d=new Date(base),day=d.getDay(),mon=new Date(d);
-  mon.setDate(d.getDate()-(day===0?6:day-1));
-  return Array.from({length:6},(_,i)=>{const dd=new Date(mon);dd.setDate(mon.getDate()+i);return dd.toISOString().split("T")[0];});
-};
-const nowTime=()=>{const n=new Date();return`${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}`;};
-const t2m=t=>{const[h,m]=t.split(":");return+h*60+ +m;};
-const m2t=m=>`${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}`;
-
-const CSS=`
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
-*{box-sizing:border-box;margin:0;padding:0;}
-html,body,#root{height:100%;background:${navy};}
-::-webkit-scrollbar{width:4px;height:4px;}
-::-webkit-scrollbar-track{background:${navyLL};}
-::-webkit-scrollbar-thumb{background:${gold}55;border-radius:2px;}
-::-webkit-scrollbar-thumb:hover{background:${gold};}
-input,select,textarea{background:#fff;border:1px solid #ddd;color:#333;padding:7px 10px;border-radius:4px;font-family:'Inter',sans-serif;font-size:13px;width:100%;outline:none;transition:border-color 0.15s;}
-input:focus,select:focus,textarea:focus{border-color:${gold};}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;border:none;border-radius:4px;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;transition:all 0.15s;white-space:nowrap;}
-.bg{background:${gold};color:${navy};padding:8px 18px;}
-.bg:hover{opacity:.88;}
-.bg:disabled{opacity:.4;cursor:not-allowed;}
-.bw{background:#fff;color:#333;border:1px solid #ddd;padding:7px 14px;}
-.bw:hover{border-color:#999;}
-.bl{background:none;border:none;color:${gold};padding:4px 8px;font-size:13px;cursor:pointer;}
-.bd{background:none;border:none;color:${red};padding:4px 8px;font-size:13px;cursor:pointer;}
-.bsm{padding:5px 12px!important;font-size:12px!important;}
-.bxs{padding:3px 8px!important;font-size:11px!important;}
-.t-ok{background:#d4edda;color:#155724;border:1px solid #c3e6cb;border-radius:12px;font-size:11px;padding:2px 8px;}
-.t-wait{background:#fff3cd;color:#856404;border:1px solid #ffeaa7;border-radius:12px;font-size:11px;padding:2px 8px;}
-.t-no{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;border-radius:12px;font-size:11px;padding:2px 8px;}
-.tr:hover{background:#f8f8f8!important;}
-.atr:hover{background:${navyLL}!important;}
-.sb{padding:8px 16px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:space-between;transition:background 0.1s;}
-.sb:hover{background:rgba(201,168,76,.1);}
-.ss{padding:7px 16px 7px 28px;cursor:pointer;font-size:12px;transition:background 0.1s;}
-.ss:hover{background:rgba(201,168,76,.08);}
-@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
-@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-@keyframes spin{to{transform:rotate(360deg)}}
-.spin{width:14px;height:14px;border:2px solid #ddd;border-top-color:${gold};border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0;}
-`;
-
-const rdvCol=(rdv,svcs)=>{
-  if(rdv.status==="cancelled")return{bg:"rgba(220,53,69,.25)",br:"#dc3545",tx:"#ff8a95"};
-  if(rdv.status==="pending")return{bg:"rgba(240,160,48,.2)",br:"#f0a030",tx:"#ffc87a"};
-  const cat=svcs.find(s=>s.id===rdv.service_id)?.category||"Autre";
-  const m={
-    "Coupe":{bg:"rgba(33,150,243,.25)",br:"#2196F3",tx:"#7ec8fb"},
-    "Barbe":{bg:"rgba(40,167,69,.25)",br:"#28a745",tx:"#6fdc8c"},
-    "Couleur":{bg:"rgba(233,30,99,.25)",br:"#e91e63",tx:"#ff6ea8"},
-    "Soin":{bg:"rgba(156,39,176,.25)",br:"#9c27b0",tx:"#ce7fe0"},
-    "Autre":{bg:"rgba(255,152,0,.25)",br:"#ff9800",tx:"#ffbb55"},
-  };
-  return m[cat]||m["Autre"];
+const PRODUITS_CAISSE = {
+  "kydra cuir chevelu": [
+    {id:1,nom:"exfoliant delicatesse",prix:39,stock:6},
+    {id:2,nom:"Shampooing délicatesse",prix:32,stock:8},
+    {id:3,nom:"huile délicatesse",prix:33,stock:6},
+    {id:4,nom:"Shampooing solide délicatesse",prix:17,stock:1},
+    {id:5,nom:"Shampooing calme",prix:32,stock:5},
+    {id:6,nom:"shampooing pureté",prix:32,stock:6},
+    {id:7,nom:"Shampooing équilibre",prix:32,stock:4},
+    {id:8,nom:"Shampooing anti chute",prix:32,stock:4},
+    {id:9,nom:"Anti chute progressif prev",prix:77,stock:2},
+    {id:10,nom:"Anti chute, avancée",prix:88,stock:3},
+  ],
+  "kydra cheveux": [
+    {id:11,nom:"Masque nutrition intense",prix:28,stock:5},
+    {id:12,nom:"Sérum éclat",prix:35,stock:3},
+    {id:13,nom:"Shampooing richesse",prix:32,stock:3},
+  ],
+  "L'atelier Shelter": [
+    {id:14,nom:"Pomade mate",prix:24,stock:7},
+    {id:15,nom:"Gel fixant",prix:18,stock:9},
+  ],
+  "men stories": [
+    {id:16,nom:"Crème coiffante",prix:22,stock:4},
+    {id:17,nom:"Huile barbe",prix:29,stock:6},
+  ],
+  "depot": [
+    {id:18,nom:"Shampoing homme",prix:19,stock:8},
+    {id:19,nom:"Conditionneur",prix:21,stock:5},
+  ],
+  "naturnua": [{id:20,nom:"Masque capillaire bio",prix:26,stock:3}],
+  "kydra corps": [{id:21,nom:"Gel douche relaxant",prix:15,stock:10}],
 };
 
-export default function App(){
-  const [page,setPage]=useState("agenda");
-  const [calOpen,setCalOpen]=useState(true); // sidebar calendrier
-  const [caisseSection,setCaisseSection]=useState("nouveau-ticket");
-  const [adminSub,setAdminSub]=useState("prestations");
-  const [loading,setLoading]=useState(true);
-  const [saving,setSaving]=useState(false);
-  const [modal,setModal]=useState(null);
-  const [toast,setToast]=useState(null);
+const REMISES_DATA = [
+  {id:1,nom:"FCSA",type:"fixe",valeur:5},
+  {id:2,nom:"commerçant",type:"pourcentage",valeur:10},
+  {id:3,nom:"amis",type:"fixe",valeur:5},
+];
 
-  const [exp,setExp]=useState({enc:true,trans:false,paie:false,compta:false,cad:false,stocks:false});
-  const tog=k=>setExp(p=>({...p,[k]:!p[k]}));
+const CLIENTS_DATA = [
+  {id:1,nom:"abdelrahman elnagar",tel:"0769909271",email:"abdelelnagar37@gmail.com",visites:0,ca:0},
+  {id:2,nom:"Aaron PATE HODIN",tel:"07 49 49 79 58",email:"patehodin.aaron@gmail.com",visites:12,ca:540},
+  {id:3,nom:"aatti keiys",tel:"07 81 21 95 37",email:"",visites:3,ca:135},
+  {id:4,nom:"Abdelkader Mostefa",tel:"06 99 37 76 25",email:"kaderm37@hotmail.fr",visites:8,ca:360},
+  {id:5,nom:"Alain MICHEL",tel:"06 09 75 39 69",email:"alain.michel37@gmail.com",visites:15,ca:675},
+  {id:6,nom:"alain prin",tel:"07 60 20 45 80",email:"archambault.morgane7@gmail.com",visites:5,ca:225},
+  {id:7,nom:"Alan Lorion",tel:"06 49 01 45 21",email:"lorionalan@gmail.com",visites:7,ca:315},
+  {id:8,nom:"Alane Bonvalet",tel:"06 45 21 70 65",email:"alanebvlt@gmail.com",visites:2,ca:90},
+  {id:9,nom:"Albane Benjamin",tel:"06 51 64 79 11",email:"albanebjm@gmail.com",visites:6,ca:270},
+  {id:10,nom:"Alex Vaglio",tel:"06 28 67 81 59",email:"alex.vaglio1@gmail.com",visites:4,ca:180},
+  {id:11,nom:"Alexandre Barbosa fernandes",tel:"06 35 38 16 98",email:"alexfrds06@gmail.com",visites:9,ca:405},
+  {id:12,nom:"Alexandre Blin",tel:"06 48 03 52 01",email:"alexandre.blin@yahoo.fr",visites:11,ca:495},
+  {id:13,nom:"Alexandre Casara",tel:"06 37 44 17 43",email:"alexinjie@hotmail.fr",visites:3,ca:135},
+  {id:14,nom:"Alexandre Da Silva",tel:"07 70 42 01 15",email:"alexandred610@gmail.com",visites:6,ca:270},
+  {id:15,nom:"Alexandre Gougeard",tel:"06 89 96 50 69",email:"gougeard21@gmail.com",visites:4,ca:180},
+];
 
-  const [clients,setClients]=useState([]);
-  const [services,setServices]=useState([]);
-  const [products,setProducts]=useState([]);
-  const [appts,setAppts]=useState([]);
-  const [txs,setTxs]=useState([]);
+const PRESTATIONS_ADMIN = {
+  "Coupe": [
+    {id:1,nom:"Coupe + Barbe",duree:60,prix:65,couleur:"#5cb85c"},
+    {id:2,nom:"Coupe Enfant",duree:30,prix:28,couleur:"#4a9eff"},
+    {id:3,nom:"Coupe Homme",duree:45,prix:45,couleur:"#4a9eff"},
+  ],
+  "Barbe": [
+    {id:4,nom:"Rasage traditionnel",duree:45,prix:35,couleur:"#f0a050"},
+    {id:5,nom:"Taille de barbe",duree:30,prix:25,couleur:"#f0a050"},
+  ],
+  "Couleur": [
+    {id:6,nom:"Balayage",duree:150,prix:180,couleur:"#f5c842"},
+    {id:7,nom:"Mèches",duree:120,prix:150,couleur:"#9060e8"},
+  ],
+  "Soin": [{id:8,nom:"Soin Kératine",duree:90,prix:95,couleur:"#5cb85c"}],
+  "Autre": [{id:9,nom:"Offre de bienvenue",duree:15,prix:0,couleur:"#f5c842"}],
+};
 
-  const [weekBase,setWeekBase]=useState(todayStr());
-  const [agView,setAgView]=useState("week");
-  const [dayView,setDayView]=useState(todayStr());
-  const [curTime,setCurTime]=useState(nowTime());
-  const [calMonth,setCalMonth]=useState(new Date());
-  const [dragS,setDragS]=useState(null);
-  const [dragE,setDragE]=useState(null);
-  const [dragging,setDragging]=useState(false);
+const PRODUITS_ADMIN = {
+  "kydra cuir chevelu": [
+    {id:1,nom:"exfoliant delicatesse",prix:39,stock:6,couleur:"#20a090"},
+    {id:2,nom:"Shampooing délicatesse",prix:32,stock:8,couleur:"#4a9eff"},
+    {id:3,nom:"huile délicatesse",prix:33,stock:6,couleur:"#4a9eff"},
+    {id:4,nom:"Shampooing solide délicatesse",prix:17,stock:1,couleur:"#4a9eff"},
+    {id:5,nom:"Shampooing calme",prix:32,stock:5,couleur:"#5cb85c"},
+    {id:6,nom:"shampooing pureté",prix:32,stock:6,couleur:"#4a9eff"},
+    {id:7,nom:"Shampooing équilibre",prix:32,stock:4,couleur:"#f5c842"},
+    {id:8,nom:"Shampooing anti chute",prix:32,stock:4,couleur:"#5cb85c"},
+    {id:9,nom:"Anti chute progressif prev",prix:77,stock:2,couleur:"#5cb85c"},
+    {id:10,nom:"Anti chute, avancée",prix:88,stock:3,couleur:"#5cb85c"},
+  ],
+  "kydra cheveux": [
+    {id:11,nom:"Shampooing richesse",prix:32,stock:3,couleur:"#d02860"},
+    {id:12,nom:"Masque nutrition intense",prix:28,stock:5,couleur:"#4a9eff"},
+  ],
+  "L'atelier Shelter": [{id:13,nom:"Pomade mate",prix:24,stock:7,couleur:"#9060e8"}],
+  "men stories": [{id:14,nom:"Crème coiffante",prix:22,stock:4,couleur:"#f0a050"}],
+  "depot": [{id:15,nom:"Shampoing homme",prix:19,stock:8,couleur:"#4a9eff"}],
+  "naturnua": [{id:16,nom:"Masque capillaire bio",prix:26,stock:3,couleur:"#5cb85c"}],
+  "kydra corps": [{id:17,nom:"Gel douche relaxant",prix:15,stock:10,couleur:"#20a090"}],
+};
 
-  const [cartItems,setCartItems]=useState([]);
-  const [cartCl,setCartCl]=useState(null);
-  const [cartClSearch,setCartClSearch]=useState("");
-  const [showClDrop,setShowClDrop]=useState(false);
-  const [cDisc,setCDisc]=useState("");
-  const [cTip,setCTip]=useState("");
-  const [cPay,setCPay]=useState("card");
-  const [hFilter,setHFilter]=useState("all");
-  const [hDate,setHDate]=useState("");
-  const [clSearch,setClSearch]=useState("");
-  const [expCl,setExpCl]=useState(null);
+const HORAIRES_DATA = {
+  Lundi:    [{debut:"10:00",fin:"19:00"}],
+  Mardi:    [{debut:"10:00",fin:"19:00"}],
+  Mercredi: [{debut:"10:00",fin:"19:00"}],
+  Jeudi:    [{debut:"10:00",fin:"19:00"}],
+  Vendredi: [{debut:"10:00",fin:"13:30"},{debut:"15:00",fin:"19:00"}],
+  Samedi:   [{debut:"10:00",fin:"19:00"}],
+  Dimanche: [],
+};
 
-  const emptyRdv={cid:"",cs:"",showList:false,sid:"",date:todayStr(),st:"",et:"",status:"confirmed",notes:"",newCl:false,ncd:{name:"",phone:"",email:"",birthday:"",address:""}};
-  const [rdvF,setRdvF]=useState(emptyRdv);
-  const [svcF,setSvcF]=useState({name:"",dur:"45",price:"",cat:"Coupe"});
+const TAUX_OCCUPATION = {
+  "10:00-11:00": {Lu:69,Ma:19,Me:19,Je:6,Ve:20,Sa:40,Di:0},
+  "11:00-12:00": {Lu:69,Ma:25,Me:0,Je:50,Ve:5,Sa:60,Di:0},
+  "12:00-13:00": {Lu:69,Ma:31,Me:0,Je:6,Ve:20,Sa:35,Di:0},
+  "13:00-14:00": {Lu:56,Ma:31,Me:0,Je:25,Ve:20,Sa:40,Di:0},
+  "14:00-15:00": {Lu:69,Ma:0,Me:19,Je:0,Ve:0,Sa:40,Di:0},
+  "15:00-16:00": {Lu:50,Ma:0,Me:13,Je:0,Ve:30,Sa:50,Di:0},
+  "16:00-17:00": {Lu:56,Ma:6,Me:0,Je:0,Ve:20,Sa:40,Di:0},
+  "17:00-18:00": {Lu:69,Ma:25,Me:0,Je:0,Ve:20,Sa:40,Di:0},
+  "18:00-19:00": {Lu:63,Ma:25,Me:0,Je:0,Ve:30,Sa:40,Di:0},
+};
 
-  const load=useCallback(async()=>{
-    setLoading(true);
-    try{
-      const[c,s,p,a,t]=await Promise.all([
-        db.get("clients","order=name"),
-        db.get("services","active=eq.true&order=category,name"),
-        db.get("products","active=eq.true&order=name"),
-        db.get("appointments","order=date,time"),
-        db.get("transactions","order=created_at.desc&limit=500"),
-      ]);
-      if(Array.isArray(c))setClients(c);
-      if(Array.isArray(s))setServices(s);
-      if(Array.isArray(p))setProducts(p);
-      if(Array.isArray(a))setAppts(a);
-      if(Array.isArray(t))setTxs(t);
-    }catch{notify("Erreur connexion","err");}
-    setLoading(false);
-  },[]);
+const STATS_PRESTATIONS = [
+  {cat:"Prestations",total:45,salon:12,ligne:33,taux:"73.3%",ca:"1 505,00 €"},
+  {nom:"Coupe homme",total:21,salon:6,ligne:15,taux:"71.4%",ca:"630,00 €"},
+  {nom:"Coupe + Barbe",total:9,salon:1,ligne:8,taux:"88.9%",ca:"495,00 €"},
+  {nom:"Coupe étudiant",total:7,salon:3,ligne:4,taux:"57.1%",ca:"175,00 €"},
+  {nom:"barbe",total:2,salon:1,ligne:1,taux:"50%",ca:"50,00 €"},
+  {nom:"Coupe (-17)",total:2,salon:1,ligne:1,taux:"50%",ca:"50,00 €"},
+  {nom:"Offre de bienvenue",total:2,salon:0,ligne:2,taux:"100%",ca:"0,00 €"},
+  {nom:"Coupe (-10 ans)",total:1,salon:0,ligne:1,taux:"100%",ca:"20,00 €"},
+  {nom:"Coupe +barbe +soin visage",total:1,salon:0,ligne:1,taux:"100%",ca:"85,00 €"},
+  {cat:"Soins & entretien",total:2,salon:0,ligne:2,taux:"100.0%",ca:"33,00 €"},
+  {nom:"Soin cuir chevelu",total:1,salon:0,ligne:1,taux:"100%",ca:"23,00 €"},
+  {nom:"Épilation sourcils",total:1,salon:0,ligne:1,taux:"100%",ca:"10,00 €"},
+];
 
-  useEffect(()=>{load();},[load]);
-  useEffect(()=>{const i=setInterval(()=>setCurTime(nowTime()),30000);return()=>clearInterval(i);},[]);
+const CORBEILLE_RDV = [
+  {id:1,agenda:"Elnagar",date:"20/04/2026 12:15",client:"Jacques VAUTIER",internet:true,creation:"17/04/2026 18:39",annulation:"20/04/2026 13:27"},
+  {id:2,agenda:"Elnagar",date:"20/04/2026 13:15",client:"",internet:false,creation:"18/04/2026 09:24",annulation:"20/04/2026 19:15"},
+  {id:3,agenda:"Elnagar",date:"20/04/2026 18:45",client:"",internet:false,creation:"20/04/2026 12:58",annulation:"20/04/2026 19:15"},
+  {id:4,agenda:"Elnagar",date:"21/04/2026 12:15",client:"Marley Girard",internet:true,creation:"17/04/2026 18:15",annulation:"21/04/2026 12:37"},
+  {id:5,agenda:"Elnagar",date:"21/04/2026 15:45",client:"Paul Pasquereau",internet:true,creation:"17/04/2026 18:37",annulation:"21/04/2026 15:38"},
+  {id:6,agenda:"Elnagar",date:"22/04/2026 12:30",client:"Hubert Blanchard",internet:true,creation:"20/04/2026 17:29",annulation:"21/04/2026 12:41"},
+  {id:7,agenda:"Elnagar",date:"22/04/2026 14:00",client:"",internet:false,creation:"20/04/2026 10:45",annulation:"22/04/2026 12:10"},
+  {id:8,agenda:"Elnagar",date:"22/04/2026 15:00",client:"Joachim Rouleau",internet:true,creation:"20/04/2026 23:23",annulation:"22/04/2026 11:06"},
+];
 
-  const notify=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),3500);};
-  const gC=id=>clients.find(c=>c.id===id);
-  const gS=id=>services.find(s=>s.id===id);
-  const gP=id=>products.find(p=>p.id===id);
-  const gI=i=>i.type==="service"?gS(i.id):gP(i.id);
-  const pm=t=>t.payment_method||"card";
+const FACTURES_DATA = [
+  {id:"F2424082",date:"24 avril 2026",montant:"110,40 €",statut:"Payée",conditions:"Prélèvement automatique"},
+  {id:"F2355311",date:"24 mars 2026",montant:"110,40 €",statut:"Payée",conditions:"Prélèvement automatique"},
+  {id:"F2289972",date:"24 février 2026",montant:"110,40 €",statut:"Payée",conditions:"Prélèvement automatique"},
+  {id:"F2225610",date:"24 janvier 2026",montant:"110,40 €",statut:"Payée",conditions:"Prélèvement automatique"},
+  {id:"CN-38509",date:"12 janvier 2026",montant:"110,40 €",statut:"Avoir non appliqué",conditions:"-"},
+  {id:"F2157650",date:"24 décembre 2025",montant:"110,40 €",statut:"Payée",conditions:"Prélèvement automatique"},
+  {id:"F2093332",date:"24 novembre 2025",montant:"110,40 €",statut:"Payée",conditions:"Prélèvement automatique"},
+];
 
-  const cartSub=useMemo(()=>cartItems.reduce((s,i)=>s+(Number(gI(i)?.price)||0)*i.qty,0),[cartItems,services,products]);
-  const disc=Number(cDisc)||0,tip=Number(cTip)||0;
-  const cartTotal=Math.max(0,cartSub-disc)+tip;
+const MOIS_NOMS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+const JOURS_LONG = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+const JOURS_COURT = ["Lu","Ma","Me","Je","Ve","Sa","Di"];
 
-  const addCart=(type,id)=>setCartItems(p=>{
-    const ex=p.find(i=>i.type===type&&i.id===id);
-    return ex?p.map(i=>i.type===type&&i.id===id?{...i,qty:i.qty+1}:i):[...p,{type,id,qty:1}];
-  });
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const fmt = (n) => n.toLocaleString("fr-FR", {minimumFractionDigits:2}) + " €";
+const now = () => { const d=new Date(); return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
 
-  const encaisser=async()=>{
-    if(!cartItems.length)return;setSaving(true);
-    const cid=cartCl?.id||null;
-    const r=await db.post("transactions",{client_id:cid,date:todayStr(),items:cartItems,subtotal:cartSub,discount:disc,tip,total:cartTotal,payment_method:cPay,status:"paid"});
-    if(r?.code){setSaving(false);return notify(r.message||"Erreur","err");}
-    if(cid){const cl=gC(cid);if(cl)await db.patch("clients",cid,{visits:(cl.visits||0)+1,loyalty:(cl.loyalty||0)+Math.floor(cartTotal),last_visit:todayStr()});}
-    await load();setSaving(false);
-    setCartItems([]);setCartCl(null);setCartClSearch("");setCDisc("");setCTip("");setCPay("card");
-    notify("Encaissé ✓");
+// ─── COMPOSANTS COMMUNS ───────────────────────────────────────────────────────
+function Modal({title, onClose, children, width="600px"}) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:8,width,maxWidth:"95vw",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.2)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <span style={{fontWeight:600,fontSize:16}}>{title}</span>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{background:"none",border:"1px solid #d1d5db",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:18}}>←</button>
+            <button style={{background:"#4caf50",border:"none",borderRadius:6,padding:"4px 12px",cursor:"pointer",color:"#fff",fontSize:18}}>✓</button>
+          </div>
+        </div>
+        <div style={{padding:20}}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function SidebarItem({label, active, onClick, indent=false}) {
+  return (
+    <div onClick={onClick} style={{padding:`8px ${indent?32:16}px`,cursor:"pointer",color:active?"#c9a84c":"#374151",background:active?"rgba(201,168,76,0.08)":"transparent",fontWeight:active?600:400,fontSize:14,borderLeft:active?"3px solid #c9a84c":"3px solid transparent"}}>
+      {label}
+    </div>
+  );
+}
+
+function SidebarSection({label, open, onToggle, children}) {
+  return (
+    <div>
+      <div onClick={onToggle} style={{padding:"8px 16px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",color:"#111827",fontWeight:600,fontSize:14}}>
+        <span>{label}</span>
+        <span style={{fontSize:10,transform:open?"rotate(180deg)":"none",transition:"0.2s"}}>{open?"▼":"▶"}</span>
+      </div>
+      {open && <div>{children}</div>}
+    </div>
+  );
+}
+
+function Btn({children,onClick,variant="primary",small=false,style={}}) {
+  const base = {border:"none",borderRadius:6,cursor:"pointer",fontWeight:500,padding:small?"4px 12px":"8px 16px",fontSize:small?13:14,...style};
+  const variants = {
+    primary:{background:"#c9a84c",color:"#fff"},
+    secondary:{background:"#f3f4f6",color:"#374151",border:"1px solid #d1d5db"},
+    danger:{background:"none",color:"#ef4444",padding:0,fontWeight:400},
+    link:{background:"none",color:"#c9a84c",padding:0,fontWeight:400,textDecoration:"underline"},
+  };
+  return <button onClick={onClick} style={{...base,...variants[variant]}}>{children}</button>;
+}
+
+function RadioGroup({options, value, onChange}) {
+  return (
+    <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+      {options.map(o=>(
+        <label key={o} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:14}}>
+          <input type="radio" checked={value===o} onChange={()=>onChange(o)} />
+          {o}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+// ─── AGENDA ──────────────────────────────────────────────────────────────────
+function AgendaView() {
+  const [vue, setVue] = useState("semaine");
+  const [showRdvModal, setShowRdvModal] = useState(false);
+  const [currentTime, setCurrentTime] = useState(now());
+  const heures = Array.from({length:13},(_,i)=>i+8);
+  const jours = ["Lun. 27/04","Mar. 28/04","Mer. 29/04","Jeu. 30/04","Ven. 01/05","Sam. 02/05","Dim. 03/05"];
+
+  const rdvSemaine = {
+    0:[{h:"10:45",fin:"11:30",nom:"Arthur Amar",prestation:"Coupe homme Elnagar",c:"#4a9eff"},{h:"11:30",fin:"12:15",nom:"Jérémy Bouirou",prestation:"Coupe homme",c:"#4a9eff"},{h:"12:15",fin:"13:00",nom:"Jacky AUBER LAOU-HAP",prestation:"Coupe",c:"#4a9eff"},{h:"13:00",fin:"14:00",nom:"SAM MIMOUN",prestation:"Coupe + Barbe Elnagar choisie",c:"#4a9eff"},{h:"14:15",fin:"14:45",nom:"Justin P",prestation:"Coupe homme",c:"#4a9eff"},{h:"15:15",fin:"15:45",nom:"Noa...",prestation:"Coupe",c:"#4a9eff"},{h:"16:30",fin:"17:15",nom:"Simon Mocquais",prestation:"Coupe homme",c:"#4a9eff"},{h:"17:15",fin:"18:00",nom:"Charles TROMPEAU",prestation:"Coupe homme",c:"#4a9eff"},{h:"18:00",fin:"18:45",nom:"Sebastien Joulin",prestation:"Coupe homme Elnag",c:"#4a9eff"}],
+    1:[{h:"10:30",fin:"11:30",nom:"Aurélien Jagueneau",prestation:"Coupe + Barbe Elnagar choisie",c:"#4a9eff"},{h:"12:30",fin:"13:15",nom:"Charly Manceau",prestation:"Coupe homme",c:"#4a9eff"},{h:"14:00",fin:"14:30",nom:"",prestation:"",c:"#9ca3af"},{h:"14:30",fin:"15:15",nom:"Arthur Verneau",prestation:"Coupe",c:"#ef4444"},{h:"15:30",fin:"16:15",nom:"Romain Cinelli-Petit",prestation:"Coupe homme",c:"#4a9eff"},{h:"16:15",fin:"17:00",nom:"Stéphane Blardat",prestation:"Coupe homme Elna",c:"#4a9eff"},{h:"17:45",fin:"18:15",nom:"Jean...",prestation:"",c:"#4a9eff"},{h:"18:15",fin:"19:00",nom:"Hugo ZOPPE",prestation:"Coupe homme Elna",c:"#4a9eff"}],
+    2:[{h:"11:15",fin:"12:00",nom:"Axel Merci",prestation:"Coupe homme Elnaga",c:"#4a9eff"},{h:"14:00",fin:"14:45",nom:"",prestation:"",c:"#9ca3af"},{h:"15:30",fin:"16:00",nom:"impot",prestation:"",c:"#9ca3af"},{h:"16:00",fin:"16:30",nom:"Maxime V",prestation:"",c:"#4a9eff"},{h:"16:30",fin:"17:00",nom:"Constant...",prestation:"",c:"#4a9eff"},{h:"17:00",fin:"17:30",nom:"Constant...",prestation:"",c:"#4a9eff"},{h:"17:30",fin:"18:00",nom:"Constant...",prestation:"",c:"#4a9eff"},{h:"18:15",fin:"19:00",nom:"Alexandre Vanhoove",prestation:"Coupe homme",c:"#4a9eff"}],
+    6:[{h:"19:15",fin:"19:45",nom:"kydra",prestation:"",c:"#9ca3af"}],
   };
 
-  const saveRdv=async()=>{
-    if(!rdvF.sid||!rdvF.date||!rdvF.st)return notify("Prestation, date et heure requis","err");
-    let cid=rdvF.cid;
-    if(rdvF.newCl&&rdvF.ncd.name){
-      setSaving(true);
-      const nc=await db.post("clients",{name:rdvF.ncd.name,phone:rdvF.ncd.phone||null,email:rdvF.ncd.email||null,notes:null,visits:0,loyalty:0});
-      if(nc?.id)cid=nc.id;
-    }
-    setSaving(true);
-    const r=await db.post("appointments",{client_id:cid||null,service_id:rdvF.sid,date:rdvF.date,time:rdvF.st,status:rdvF.status,notes:rdvF.notes||null});
-    setSaving(false);
-    if(r?.code)return notify(r.message||"Erreur","err");
-    await load();setModal(null);setRdvF(emptyRdv);notify("RDV ajouté ✓");
-  };
+  useEffect(()=>{const t=setInterval(()=>setCurrentTime(now()),60000);return()=>clearInterval(t);},[]);
 
-  const updRdv=async(id,b)=>{await db.patch("appointments",id,b);await load();setModal(null);notify("Mis à jour ✓");};
-  const delRdv=async id=>{await db.del("appointments",id);await load();setModal(null);notify("Supprimé");};
+  const topY = (h,m=0) => ((parseInt(h)-8)*60+parseInt(m||0))/60*64+48;
 
-  const today=todayStr();
-  const weekDays=getDOW(weekBase);
-  const todayRdv=appts.filter(a=>a.date===today);
-  const todayRev=txs.filter(t=>t.date===today).reduce((s,t)=>s+Number(t.total||0),0);
-  const cm=new Date().getMonth()+1,cy=new Date().getFullYear();
-  const mTxs=txs.filter(t=>{const[y,m]=t.date.split("-");return+y===cy&&+m===cm;});
-  const mRev=mTxs.reduce((s,t)=>s+Number(t.total||0),0);
-  const lowStock=products.filter(p=>p.stock<=5);
-  const cancelledAppts=appts.filter(a=>a.status==="cancelled");
+  return (
+    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+      {/* Sidebar mini calendrier */}
+      <div style={{width:240,background:"#0d1b2a",borderRight:"1px solid #1e3a5f",padding:16,overflowY:"auto",flexShrink:0}}>
+        <MiniCalendrier />
+        <div style={{marginTop:16,paddingTop:16,borderTop:"1px solid #1e3a5f"}}>
+          <div style={{color:"#94a3b8",fontSize:11,fontWeight:600,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Mode Plusieurs agendas</div>
+          <label style={{display:"flex",alignItems:"center",gap:6,color:"#94a3b8",fontSize:13,cursor:"pointer",marginBottom:4}}>
+            <input type="radio" name="mode" defaultChecked style={{accentColor:"#c9a84c"}} /> Non
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:6,color:"#94a3b8",fontSize:13,cursor:"pointer"}}>
+            <input type="radio" name="mode" style={{accentColor:"#c9a84c"}} /> Oui
+          </label>
+          <div style={{marginTop:16,color:"#94a3b8",fontSize:11,fontWeight:600,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Équipe</div>
+          <label style={{display:"flex",alignItems:"center",gap:6,color:"#c9a84c",fontSize:13,cursor:"pointer"}}>
+            <input type="radio" defaultChecked style={{accentColor:"#c9a84c"}} /> Elnagar
+          </label>
+        </div>
+        <div style={{position:"absolute",bottom:0,left:0,width:240,padding:"8px 16px",background:"#0d1b2a",borderTop:"1px solid #1e3a5f",color:"#94a3b8",fontSize:12}}>
+          <div>02/05/2026</div>
+          <div>0 RDV · <span style={{color:"#c9a84c"}}>0,00 €</span></div>
+        </div>
+      </div>
 
-  const filtTxs=useMemo(()=>{
-    let r=[...txs];
-    if(hFilter!=="all")r=r.filter(t=>pm(t)===hFilter);
-    if(hDate)r=r.filter(t=>t.date===hDate);
-    return r;
-  },[txs,hFilter,hDate]);
+      {/* Grille agenda */}
+      <div style={{flex:1,overflow:"auto",background:"#0d1b2a"}}>
+        {/* Toolbar */}
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#0d1b2a",borderBottom:"1px solid #1e3a5f",position:"sticky",top:0,zIndex:10}}>
+          <button style={{background:"#1e3a5f",color:"#e2e8f0",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:13}}>Aujourd'hui</button>
+          <button style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:18}}>‹</button>
+          <button style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:18}}>›</button>
+          <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+            <button onClick={()=>setVue("jour")} style={{background:vue==="jour"?"#c9a84c":"#1e3a5f",color:vue==="jour"?"#fff":"#94a3b8",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13}}>Vue jour</button>
+            <button onClick={()=>setVue("semaine")} style={{background:vue==="semaine"?"#c9a84c":"#1e3a5f",color:vue==="semaine"?"#fff":"#94a3b8",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13}}>Vue semaine</button>
+            <span style={{color:"#94a3b8",fontSize:13}}>⏱ 15 min</span>
+            <span style={{color:"#e2e8f0",fontWeight:600,fontSize:15}}>{currentTime}</span>
+          </div>
+        </div>
 
-  const svcTop=services.map(s=>{
-    const it=txs.flatMap(t=>t.items||[]).filter(i=>i.type==="service"&&i.id===s.id);
-    return{...s,count:it.reduce((sm,i)=>sm+i.qty,0),rev:it.reduce((sm,i)=>sm+(Number(s.price)||0)*i.qty,0)};
-  }).sort((a,b)=>b.rev-a.rev);
-
-  const filtCl=useMemo(()=>clients.filter(c=>c.name.toLowerCase().includes(clSearch.toLowerCase())||(c.phone||"").includes(clSearch)),[clients,clSearch]);
-
-  // Mini calendar
-  const cy2=calMonth.getFullYear(),cm2=calMonth.getMonth();
-  const fd=(new Date(cy2,cm2,1).getDay()||7)-1;
-  const dim=new Date(cy2,cm2+1,0).getDate();
-
-  // Drag
-  const isSel=(date,time)=>{
-    if(!dragging||!dragS||!dragE||date!==dragS.date)return false;
-    const t=t2m(time),s=t2m(dragS.time),e=t2m(dragE.time);
-    return t>=Math.min(s,e)&&t<=Math.max(s,e);
-  };
-  const onMD=(date,time,e)=>{if(e.button!==0)return;setDragS({date,time});setDragE({date,time});setDragging(true);};
-  const onME=(date,time)=>{if(dragging&&dragS)setDragE({date,time});};
-  const onMU=(date,time)=>{
-    if(dragging&&dragS){
-      setRdvF({...emptyRdv,date:dragS.date,st:dragS.time,et:m2t(t2m(time)+30)});
-      setModal("rdv");
-    }
-    setDragging(false);setDragS(null);setDragE(null);
-  };
-
-  const caisseClients=cartClSearch?clients.filter(c=>c.name.toLowerCase().includes(cartClSearch.toLowerCase())||(c.phone||"").includes(cartClSearch)):clients.slice(0,10);
-  const rdvClients=rdvF.cs?clients.filter(c=>c.name.toLowerCase().includes(rdvF.cs.toLowerCase())||(c.phone||"").includes(rdvF.cs)):clients.slice(0,8);
-
-  // ════════════════════════════════════════════════════════
-  return(
-    <div style={{display:"flex",height:"100vh",fontFamily:"'Inter',sans-serif",overflow:"hidden"}} onMouseUp={()=>{if(dragging){setDragging(false);setDragS(null);setDragE(null);}}}>
-      <style>{CSS}</style>
-
-      {/* ── SIDEBAR CALENDRIER BLEUE ── */}
-      {(calOpen&&page==="agenda")&&(
-        <div style={{width:200,background:navyL,borderRight:`1px solid ${bord}`,display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden"}}>
-
-          {/* Mini calendrier */}
-          <div style={{padding:"14px 12px 10px",borderBottom:`1px solid ${bord}`}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <button onClick={()=>setCalMonth(new Date(cy2,cm2-1,1))} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:muted}}>‹</button>
-              <span style={{fontSize:11,fontWeight:600,color:white}}>{MOIS[cm2].slice(0,4)}. {cy2}</span>
-              <button onClick={()=>setCalMonth(new Date(cy2,cm2+1,1))} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:muted}}>›</button>
+        {/* Grille */}
+        <div style={{display:"flex",minWidth:900}}>
+          <div style={{width:56,flexShrink:0}} />
+          {jours.map((j,i)=>(
+            <div key={i} style={{flex:1,textAlign:"center",padding:"8px 4px",borderLeft:"1px solid #1e3a5f",color:i===4?"#c9a84c":"#94a3b8",fontSize:13,fontWeight:i===4?600:400,background:"#0d1b2a",position:"sticky",top:56,zIndex:9}}>
+              {j}
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",textAlign:"center",marginBottom:4}}>
-              {["L","M","M","J","V","S","D"].map((d,i)=><div key={i} style={{fontSize:9,color:muted}}>{d}</div>)}
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"1px",textAlign:"center"}}>
-              {Array.from({length:42},(_,i)=>{
-                const day=i-fd+1,inM=day>=1&&day<=dim;
-                const ds=`${cy2}-${String(cm2+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-                const isT=ds===today,inW=weekDays.includes(ds),isD=ds===dayView;
-                const hasR=inM&&appts.some(a=>a.date===ds);
-                return(
-                  <div key={i} onClick={()=>{if(inM){setWeekBase(ds);setDayView(ds);}}} style={{
-                    fontSize:10,padding:"3px 1px",borderRadius:3,cursor:inM?"pointer":"default",
-                    background:isT?gold:agView==="week"&&inW&&inM?`${gold}22`:agView==="day"&&isD&&inM?"#1a3a2a":"transparent",
-                    color:isT?navy:inM?white:"#2a4a6a",fontWeight:isT?700:400,
-                    border:agView==="week"&&inW&&inM&&!isT?`1px solid ${gold}44`:"1px solid transparent",
-                  }}>
-                    {inM?day:""}
-                    {hasR&&!isT&&<div style={{width:3,height:3,background:gold,borderRadius:"50%",margin:"0 auto"}}/>}
+          ))}
+        </div>
+
+        <div style={{display:"flex",position:"relative",minWidth:900}}>
+          {/* Heures */}
+          <div style={{width:56,flexShrink:0}}>
+            {heures.map(h=>(
+              <div key={h} style={{height:64,borderTop:"1px solid #1e3a5f",color:"#4a6a8a",fontSize:11,paddingTop:4,paddingLeft:4}}>{h}:00</div>
+            ))}
+          </div>
+          {/* Colonnes */}
+          {jours.map((_,ci)=>(
+            <div key={ci} style={{flex:1,borderLeft:"1px solid #1e3a5f",position:"relative",minHeight:heures.length*64}}>
+              {heures.map(h=>(
+                <div key={h} style={{height:64,borderTop:"1px solid #1e3a5f"}} />
+              ))}
+              {(rdvSemaine[ci]||[]).map((rdv,ri)=>{
+                const [hh,mm] = rdv.h.split(":");
+                const [fhh,fmm] = rdv.fin.split(":");
+                const top = ((parseInt(hh)-8)*60+parseInt(mm))/60*64;
+                const height = ((parseInt(fhh)*60+parseInt(fmm))-(parseInt(hh)*60+parseInt(mm)))/60*64-2;
+                return (
+                  <div key={ri} onClick={()=>setShowRdvModal(true)} style={{position:"absolute",top,left:2,right:2,height,background:rdv.c+"dd",borderRadius:4,padding:"2px 4px",overflow:"hidden",cursor:"pointer",fontSize:11,color:"#fff",borderLeft:`3px solid ${rdv.c}`}}>
+                    <div style={{fontWeight:600}}>{rdv.h} - {rdv.fin}</div>
+                    {rdv.nom && <div>{rdv.nom}</div>}
+                    {rdv.prestation && <div style={{opacity:0.85}}>{rdv.prestation}</div>}
                   </div>
                 );
               })}
             </div>
-          </div>
-
-          {/* Mode agenda */}
-          <div style={{padding:"10px 14px",borderBottom:`1px solid ${bord}`}}>
-            <div style={{fontSize:10,color:muted,marginBottom:6}}>Mode Plusieurs agendas</div>
-            <div style={{fontSize:11,color:white}}>● Non &nbsp; ○ Oui</div>
-            <div style={{fontSize:10,color:muted,marginTop:8,marginBottom:4}}>Équipe</div>
-            <div style={{fontSize:11,color:gold,fontWeight:600}}>● Elnagar</div>
-          </div>
-
-          {/* Flex espace */}
-          <div style={{flex:1}}/>
-
-          {/* Résumé jour EN BAS de la sidebar */}
-          <div style={{padding:"12px 14px",borderTop:`1px solid ${bord}`,background:navy}}>
-            <div style={{fontSize:10,color:muted,marginBottom:4}}>{fmt3(today)}</div>
-            <div style={{color:gold,fontSize:13,fontWeight:600,marginBottom:2}}>{todayRdv.length} RDV aujourd'hui</div>
-            <div style={{color:white,fontSize:12}}>{eur(todayRev)}</div>
-            {lowStock.length>0&&<div style={{color:amber,fontSize:10,marginTop:4}}>⚠ {lowStock.length} stock(s) faible(s)</div>}
-          </div>
+          ))}
         </div>
-      )}
+      </div>
 
-      {/* Sidebar caisse/clients/admin */}
-      {(calOpen&&page!=="agenda")&&(
-        <div style={{width:220,background:navyL,borderRight:`1px solid ${bord}`,display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden"}}>
-          <nav style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
-            {page==="caisse"&&(
-              <>
-                <div className="sb" onClick={()=>tog("enc")} style={{padding:"8px 16px",fontSize:13,color:exp.enc?gold:muted}}>
-                  <span>{exp.enc?"▼":"▶"} Encaissement</span>
+      {showRdvModal && <ModalRDV onClose={()=>setShowRdvModal(false)} />}
+    </div>
+  );
+}
+
+function MiniCalendrier() {
+  const [mois, setMois] = useState(3); // Avril = 3
+  const [annee] = useState(2026);
+  const premier = new Date(annee,mois,1).getDay();
+  const decalage = premier===0?6:premier-1;
+  const nbJours = new Date(annee,mois+1,0).getDate();
+  const cases = Array(decalage).fill(null).concat(Array.from({length:nbJours},(_,i)=>i+1));
+  while(cases.length%7!==0) cases.push(null);
+
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+        <span style={{color:"#e2e8f0",fontWeight:600,fontSize:14}}>{MOIS_NOMS[mois]} {annee}</span>
+        <div style={{display:"flex",gap:4}}>
+          <button onClick={()=>setMois(m=>Math.max(0,m-1))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:16}}>‹</button>
+          <button onClick={()=>setMois(m=>Math.min(11,m+1))} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:16}}>›</button>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
+        {["L","M","M","J","V","S","D"].map((d,i)=>(
+          <div key={i} style={{textAlign:"center",color:"#4a6a8a",fontSize:11,padding:"2px 0"}}>{d}</div>
+        ))}
+        {cases.map((d,i)=>(
+          <div key={i} style={{textAlign:"center",fontSize:12,padding:"3px 0",borderRadius:4,cursor:d?"pointer":"default",color:d===2?"#fff":d?"#94a3b8":"transparent",background:d===2?"#c9a84c":"transparent",fontWeight:d===2?600:400}}>
+            {d||""}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ModalRDV({onClose}) {
+  const [clientSearch, setClientSearch] = useState("");
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [selectedPrestation, setSelectedPrestation] = useState(null);
+  const filtered = CLIENTS_DATA.filter(c=>c.nom.toLowerCase().includes(clientSearch.toLowerCase())||c.tel.includes(clientSearch));
+
+  return (
+    <Modal title="Nouveau rendez-vous" onClose={onClose} width="680px">
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <div>
+          <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>CLIENT</label>
+          <input value={clientSearch} onChange={e=>setClientSearch(e.target.value)} placeholder="Rechercher un client..." style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+          {clientSearch && !selectedClient && (
+            <div style={{border:"1px solid #e5e7eb",borderRadius:6,marginTop:4,maxHeight:160,overflowY:"auto"}}>
+              {filtered.slice(0,6).map(c=>(
+                <div key={c.id} onClick={()=>{setSelectedClient(c);setClientSearch(c.nom);}} style={{padding:"8px 12px",cursor:"pointer",fontSize:14,borderBottom:"1px solid #f3f4f6"}} onMouseEnter={e=>e.target.style.background="#f9fafb"} onMouseLeave={e=>e.target.style.background=""}>
+                  <strong>{c.nom}</strong> — {c.tel}
                 </div>
-                {exp.enc&&(
-                  <>
-                    <div className="ss" onClick={()=>setCaisseSection("nouveau-ticket")} style={{color:caisseSection==="nouveau-ticket"?gold:muted,background:caisseSection==="nouveau-ticket"?`${gold}15`:"transparent"}}>Nouveau ticket</div>
-                    <div className="ss" onClick={()=>setCaisseSection("tickets-attente")} style={{color:caisseSection==="tickets-attente"?gold:muted,background:caisseSection==="tickets-attente"?`${gold}15`:"transparent"}}>Tickets en attente</div>
-                  </>
-                )}
-                <div className="sb" onClick={()=>tog("trans")} style={{padding:"8px 16px",fontSize:13,color:exp.trans?gold:muted}}>
-                  <span>{exp.trans?"▼":"▶"} Transactions</span>
+              ))}
+              <div style={{padding:"8px 12px",color:"#c9a84c",cursor:"pointer",fontSize:13}}>+ Créer un nouveau client</div>
+            </div>
+          )}
+        </div>
+        <div>
+          <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>PRESTATION</label>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,maxHeight:200,overflowY:"auto"}}>
+            {Object.entries(PRESTATIONS_CAISSE).map(([cat,prests])=>
+              prests.map(p=>(
+                <div key={p.id} onClick={()=>setSelectedPrestation(p)} style={{padding:"8px 12px",border:`2px solid ${selectedPrestation?.id===p.id?"#c9a84c":"#e5e7eb"}`,borderRadius:6,cursor:"pointer",background:selectedPrestation?.id===p.id?"#fdf8ed":"#fff",fontSize:13}}>
+                  <div style={{fontWeight:500}}>{p.nom}</div>
+                  <div style={{color:"#c9a84c",fontSize:12}}>{p.duree>0?`${p.duree} min · `:""}{p.prix===0?"Gratuit":`${p.prix},00 €`}</div>
                 </div>
-                {exp.trans&&(
-                  <>
-                    <div className="ss" onClick={()=>setCaisseSection("tickets")} style={{color:caisseSection==="tickets"?gold:muted,background:caisseSection==="tickets"?`${gold}15`:"transparent"}}>Tickets</div>
-                    <div className="ss" onClick={()=>setCaisseSection("reglements")} style={{color:caisseSection==="reglements"?gold:muted,background:caisseSection==="reglements"?`${gold}15`:"transparent"}}>Règlements</div>
-                    <div className="ss" onClick={()=>setCaisseSection("suivi-especes")} style={{color:caisseSection==="suivi-especes"?gold:muted,background:caisseSection==="suivi-especes"?`${gold}15`:"transparent"}}>Suivi d'espèces</div>
-                  </>
-                )}
-                <div className="sb" onClick={()=>tog("paie")} style={{padding:"8px 16px",fontSize:13,color:exp.paie?gold:muted}}>
-                  <span>{exp.paie?"▼":"▶"} Paiements en plusieurs fois</span>
-                </div>
-                {exp.paie&&<div className="ss" onClick={()=>setCaisseSection("echeances")} style={{color:caisseSection==="echeances"?gold:muted,background:caisseSection==="echeances"?`${gold}15`:"transparent"}}>Gestion des échéances</div>}
-                <div className="sb" onClick={()=>tog("compta")} style={{padding:"8px 16px",fontSize:13,color:exp.compta?gold:muted}}>
-                  <span>{exp.compta?"▼":"▶"} Données comptables</span>
-                </div>
-                {exp.compta&&[["indicateurs","Indicateurs clés"],["ca","Chiffre d'affaires"],["collab","Collaborateurs"],["presta","Prestations"],["tva","TVA"],["regl","Règlements"]].map(([k,l])=>(
-                  <div key={k} className="ss" onClick={()=>setCaisseSection(k)} style={{color:caisseSection===k?gold:muted,background:caisseSection===k?`${gold}15`:"transparent"}}>{l}</div>
-                ))}
-                <div className="sb" onClick={()=>tog("cad")} style={{padding:"8px 16px",fontSize:13,color:muted}}><span>▶ Cartes cadeaux &amp; cures</span></div>
-                <div className="sb" onClick={()=>tog("stocks")} style={{padding:"8px 16px",fontSize:13,color:exp.stocks?gold:muted}}>
-                  <span>{exp.stocks?"▼":"▶"} Gestion des stocks</span>
-                </div>
-                {exp.stocks&&(
-                  <>
-                    <div className="ss" onClick={()=>setCaisseSection("etat-stocks")} style={{color:caisseSection==="etat-stocks"?gold:muted,background:caisseSection==="etat-stocks"?`${gold}15`:"transparent"}}>État des stocks</div>
-                    <div className="ss" onClick={()=>setCaisseSection("entrees-sorties")} style={{color:caisseSection==="entrees-sorties"?gold:muted,background:caisseSection==="entrees-sorties"?`${gold}15`:"transparent"}}>Entrées &amp; Sorties</div>
-                  </>
-                )}
-                {["Paiement en ligne","Terminal de paiement","Tap to Pay","Boutique en ligne"].map(l=>(
-                  <div key={l} className="sb" style={{padding:"8px 16px",fontSize:13,color:muted}}>▶ {l}</div>
-                ))}
-              </>
-            )}
-            {page==="admin"&&(
-              [["prestations","Gestion des prestations"],["produits","Gestion des produits"],["stats-rdv","Statistiques RDV"],["taux","Taux d'occupation"],["corbeille","Corbeille RDV"]].map(([k,l])=>(
-                <div key={k} className="sb" onClick={()=>setAdminSub(k)} style={{color:adminSub===k?gold:muted,background:adminSub===k?`${gold}18`:"transparent",borderLeft:adminSub===k?`3px solid ${gold}`:"3px solid transparent"}}>{l}</div>
               ))
             )}
-          </nav>
-          {/* Infos bas sidebar caisse/admin */}
-          <div style={{padding:"10px 14px",borderTop:`1px solid ${bord}`,background:navy}}>
-            <div style={{fontSize:10,color:muted}}>{fmt3(today)}</div>
-            <div style={{color:white,fontSize:12,marginTop:2}}>{todayRdv.length} RDV · <span style={{color:gold}}>{eur(todayRev)}</span></div>
           </div>
         </div>
-      )}
-
-      {/* MAIN */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:page==="agenda"?agBg:"#f5f5f5"}}>
-
-        {/* TOPBAR */}
-        <div style={{background:page==="agenda"?navy:"#fff",borderBottom:`1px solid ${page==="agenda"?bord:"#e0e0e0"}`,padding:"0 18px",height:52,display:"flex",alignItems:"center",gap:14,flexShrink:0,boxShadow:"0 1px 4px rgba(0,0,0,.15)"}}>
-
-          {/* Logo + Hamburger */}
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:28,height:28,borderRadius:5,background:gold,display:"flex",alignItems:"center",justifyContent:"center",color:navy,fontWeight:700,fontSize:14,flexShrink:0}}>E</div>
-            <div>
-              <div style={{color:page==="agenda"?white:"#333",fontWeight:700,fontSize:13,letterSpacing:"1px",lineHeight:1}}>ELNAGAR</div>
-            </div>
-            <button onClick={()=>setCalOpen(p=>!p)} style={{background:"none",border:"none",cursor:"pointer",fontSize:17,color:page==="agenda"?muted:"#666",padding:"4px",lineHeight:1,marginLeft:4}}>☰</button>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>
+            <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>DATE</label>
+            <input type="date" defaultValue="2026-05-02" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
           </div>
+          <div>
+            <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>HEURE</label>
+            <input type="time" defaultValue="10:00" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+          </div>
+        </div>
+        <div>
+          <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4,fontWeight:600}}>NOTE</label>
+          <textarea placeholder="Titre ou note..." style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,minHeight:60,resize:"vertical",boxSizing:"border-box"}} />
+        </div>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+          <Btn variant="secondary" onClick={onClose}>Annuler</Btn>
+          <Btn onClick={onClose}>Enregistrer</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
-          {/* Onglets navigation */}
-          <div style={{display:"flex",alignItems:"center"}}>
-            {[["agenda","Agenda"],["caisse","Caisse"],["clients","Clients"],["admin","Admin"]].map(([k,l])=>(
-              <button key={k} onClick={()=>setPage(k)} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,fontWeight:500,color:page===k?(k==="agenda"?gold:"#333"):"#888",borderBottom:page===k?`2px solid ${gold}`:"2px solid transparent",padding:"0 12px",height:52,transition:"all 0.15s"}}>{l}</button>
+// ─── CAISSE ───────────────────────────────────────────────────────────────────
+function CaisseView() {
+  const [sideSection, setSideSection] = useState("encaissement");
+  const [activeSide, setActiveSide] = useState("Nouveau ticket");
+  const [ticket, setTicket] = useState([]);
+  const [clientSearch, setClientSearch] = useState("");
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [modalType, setModalType] = useState(null);
+  const [paiement, setPaiement] = useState("Carte");
+  const [remise, setRemise] = useState(0);
+  const [pourboire, setPourboire] = useState(0);
+
+  const total = ticket.reduce((s,i)=>s+i.prix,0);
+  const totalNet = Math.max(0, total - remise);
+  const filteredClients = CLIENTS_DATA.filter(c=>c.nom.toLowerCase().includes(clientSearch.toLowerCase()));
+
+  const sidebarSections = {
+    "Encaissement": ["Nouveau ticket","Tickets en attente"],
+    "Transactions": [],
+    "Paiements en plusieurs fois": [],
+    "Données comptables": [],
+    "Cartes cadeaux & cures": [],
+    "Gestion des stocks": [],
+    "Paiement en ligne": [],
+    "Terminal de paiement": [],
+    "Tap to Pay": [],
+    "Boutique en ligne": [],
+  };
+
+  return (
+    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+      {/* Sidebar */}
+      <div style={{width:220,background:"#0d1b2a",borderRight:"1px solid #1e3a5f",overflowY:"auto",flexShrink:0}}>
+        {Object.entries(sidebarSections).map(([section,items])=>(
+          <div key={section}>
+            <div onClick={()=>setSideSection(sideSection===section?null:section)} style={{padding:"10px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",color:sideSection===section?"#c9a84c":"#e2e8f0",fontWeight:sideSection===section?600:400,fontSize:14}}>
+              <span>{section}</span>
+              <span style={{fontSize:10}}>{items.length>0?(sideSection===section?"▼":"▶"):""}</span>
+            </div>
+            {sideSection===section && items.map(item=>(
+              <div key={item} onClick={()=>setActiveSide(item)} style={{padding:"8px 16px 8px 28px",cursor:"pointer",color:activeSide===item?"#c9a84c":"#94a3b8",background:activeSide===item?"rgba(201,168,76,0.08)":"transparent",fontSize:13,borderLeft:activeSide===item?"3px solid #c9a84c":"3px solid transparent"}}>
+                {item}
+              </div>
             ))}
           </div>
-
-          {/* Heure au centre */}
-          <div style={{flex:1,textAlign:"center",fontSize:17,fontWeight:700,color:page==="agenda"?white:"#333",letterSpacing:"1px",pointerEvents:"none"}}>{curTime}</div>
-
-          <div style={{display:"flex",gap:7,alignItems:"center"}}>
-            {page==="agenda"&&(
-              <>
-                <div style={{display:"flex",border:`1px solid ${bord}`,borderRadius:4,overflow:"hidden"}}>
-                  <button onClick={()=>setAgView("day")} style={{background:agView==="day"?`${gold}22`:"transparent",border:"none",padding:"5px 11px",fontSize:12,cursor:"pointer",color:agView==="day"?gold:muted}}>Vue jour</button>
-                  <button onClick={()=>setAgView("week")} style={{background:agView==="week"?`${gold}22`:"transparent",border:"none",borderLeft:`1px solid ${bord}`,padding:"5px 11px",fontSize:12,cursor:"pointer",color:agView==="week"?gold:muted}}>Vue semaine</button>
-                </div>
-                <button className="btn bsm" onClick={()=>{setWeekBase(today);setDayView(today);}} style={{background:`${gold}22`,border:`1px solid ${gold}44`,color:gold}}>Aujourd'hui</button>
-                <button className="btn bsm" onClick={()=>{if(agView==="week"){const d=new Date(weekBase);d.setDate(d.getDate()-7);setWeekBase(d.toISOString().split("T")[0]);}else{const d=new Date(dayView);d.setDate(d.getDate()-1);setDayView(d.toISOString().split("T")[0]);}}} style={{background:`${gold}15`,border:`1px solid ${bord}`,color:muted}}>←</button>
-                <button className="btn bsm" onClick={()=>{if(agView==="week"){const d=new Date(weekBase);d.setDate(d.getDate()+7);setWeekBase(d.toISOString().split("T")[0]);}else{const d=new Date(dayView);d.setDate(d.getDate()+1);setDayView(d.toISOString().split("T")[0]);}}} style={{background:`${gold}15`,border:`1px solid ${bord}`,color:muted}}>→</button>
-              </>
-            )}
-            {loading&&<div className="spin"/>}
-            <button className="btn bsm" onClick={load} style={{background:`${gold}15`,border:`1px solid ${bord}`,color:muted}}>↻</button>
-            <button className="btn bg" onClick={()=>{setRdvF({...emptyRdv,date:today,st:"10:00",et:"10:45"});setModal("rdv");}}>+ Nouveau RDV</button>
-          </div>
+        ))}
+        <div style={{position:"sticky",bottom:0,padding:"8px 16px",background:"#0d1b2a",borderTop:"1px solid #1e3a5f",color:"#94a3b8",fontSize:12}}>
+          <div>02/05/2026</div>
+          <div>0 RDV · <span style={{color:"#c9a84c"}}>0,00 €</span></div>
         </div>
+      </div>
 
-        {toast&&<div style={{position:"fixed",top:60,right:18,zIndex:9999,background:toast.type==="err"?"#f8d7da":"#d4edda",border:`1px solid ${toast.type==="err"?"#f5c6cb":"#c3e6cb"}`,color:toast.type==="err"?"#721c24":"#155724",padding:"9px 16px",borderRadius:6,fontSize:13,animation:"fadeIn 0.2s",boxShadow:"0 2px 8px rgba(0,0,0,.2)"}}>{toast.msg}</div>}
-
-        <main style={{flex:1,overflowY:"auto",overflowX:"hidden"}}>
-
-          {/* ════ AGENDA (fond bleu) ════ */}
-          {page==="agenda"&&(
-            <div style={{height:"100%",overflowY:"auto",overflowX:"auto"}} onMouseLeave={()=>{if(dragging){setDragging(false);setDragS(null);setDragE(null);}}}>
-
-              {agView==="week"&&(
-                <table style={{width:"100%",borderCollapse:"collapse",minWidth:650}} onMouseUp={()=>{if(dragging&&dragS&&dragE)onMU(dragE.date,dragE.time);}}>
-                  <thead style={{position:"sticky",top:0,zIndex:10,background:navy}}>
-                    <tr style={{borderBottom:`2px solid ${bord}`}}>
-                      <th style={{width:52,padding:"8px",borderRight:`1px solid ${bord}`,color:agTextMuted,fontSize:10}}></th>
-                      {weekDays.map((d,i)=>{
-                        const isT=d===today,cnt=appts.filter(a=>a.date===d).length;
-                        return(
-                          <th key={d} onClick={()=>{setAgView("day");setDayView(d);}} style={{
-                            padding:"8px 4px",textAlign:"center",cursor:"pointer",
-                            background:isT?"#0d2d1a":"#0f2240",
-                            borderRight:`1px solid ${bord}`,minWidth:120,
-                            borderBottom:isT?`3px solid ${green}`:`3px solid ${gold}55`,
-                          }}>
-                            <div style={{fontSize:10,color:isT?green:gold,fontWeight:600,textTransform:"uppercase"}}>{JOURS[i]}</div>
-                            <div style={{fontSize:15,fontWeight:700,color:isT?"#fff":agText}}>{fmt2(d)}</div>
-                            {cnt>0&&<div style={{fontSize:9,color:agTextMuted}}>{cnt} RDV</div>}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {HOURS.map(time=>(
-                      <tr key={time} style={{borderBottom:`1px solid ${time.endsWith(":00")?agLine:agLineAlt}`}}>
-                        <td style={{padding:"2px 8px",fontSize:10,color:agTextMuted,borderRight:`1px solid ${agLine}`,verticalAlign:"top",height:26,whiteSpace:"nowrap"}}>{time.endsWith(":00")?time:""}</td>
-                        {weekDays.map(date=>{
-                          const rdv=appts.find(a=>a.date===date&&a.time===time);
-                          const cl=rdv?gC(rdv.client_id):null,sv=rdv?gS(rdv.service_id):null;
-                          const isT=date===today,col=rdv?rdvCol(rdv,services):{},sel=isSel(date,time);
-                          return(
-                            <td key={date}
-                              onMouseDown={e=>!rdv&&onMD(date,time,e)}
-                              onMouseEnter={()=>!rdv&&onME(date,time)}
-                              onMouseUp={()=>!rdv&&onMU(date,time)}
-                              onClick={()=>!rdv&&!dragging&&(setRdvF({...emptyRdv,date,st:time,et:m2t(t2m(time)+30)}),setModal("rdv"))}
-                              style={{
-                                padding:"1px 3px",verticalAlign:"top",
-                                borderRight:`1px solid ${agLine}`,
-                                background:sel?"rgba(201,168,76,.2)":isT?"rgba(40,167,69,.06)":agBg,
-                                cursor:rdv?"default":"crosshair",userSelect:"none",height:26,
-                                transition:"background 0.1s",
-                              }}>
-                              {rdv&&sv&&(
-                                <div onClick={e=>{e.stopPropagation();setModal({type:"viewRdv",rdv});}} style={{background:col.bg,border:`1px solid ${col.br}55`,borderLeft:`3px solid ${col.br}`,borderRadius:3,padding:"2px 5px",cursor:"pointer"}}>
-                                  <div style={{fontSize:11,fontWeight:600,color:col.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cl?cl.name:"Sans client"}</div>
-                                  <div style={{fontSize:10,color:col.tx,opacity:.8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sv.name}</div>
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {agView==="day"&&(
-                <div style={{minWidth:400}}>
-                  <div style={{background:navy,borderBottom:`2px solid ${bord}`,padding:"10px 18px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:10}}>
-                    <div>
-                      <div style={{fontSize:10,color:gold,fontWeight:600,textTransform:"uppercase"}}>{["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"][(new Date(dayView).getDay()||7)-1]}</div>
-                      <div style={{fontSize:24,fontWeight:700,color:dayView===today?"#6fff6f":agText}}>{dayView.split("-")[2]} {MOIS[parseInt(dayView.split("-")[1])-1]}</div>
-                    </div>
-                    <div style={{fontSize:12,color:agTextMuted}}>{appts.filter(a=>a.date===dayView).length} RDV · {eur(txs.filter(t=>t.date===dayView).reduce((s,t)=>s+Number(t.total||0),0))}</div>
-                  </div>
-                  <div style={{position:"relative"}}>
-                    {dayView===today&&(()=>{
-                      const[h,m]=curTime.split(":").map(Number);
-                      const pct=((h*60+m-8*60)/(12*60))*100;
-                      return pct>0&&pct<100?<div style={{position:"absolute",left:52,right:0,top:`${pct}%`,zIndex:5,pointerEvents:"none"}}><div style={{height:2,background:red,position:"relative"}}><div style={{width:8,height:8,background:red,borderRadius:"50%",position:"absolute",left:-4,top:-3}}/></div></div>:null;
-                    })()}
-                    {HOURS.map(time=>{
-                      const rdvs=appts.filter(a=>a.date===dayView&&a.time===time);
-                      return(
-                        <div key={time} style={{display:"flex",borderBottom:`1px solid ${time.endsWith(":00")?agLine:agLineAlt}`,minHeight:36}}
-                          onMouseDown={e=>onMD(dayView,time,e)}
-                          onMouseEnter={()=>onME(dayView,time)}
-                          onMouseUp={()=>onMU(dayView,time)}>
-                          <div style={{width:52,padding:"3px 8px 3px 0",fontSize:10,color:agTextMuted,textAlign:"right",flexShrink:0}}>{time.endsWith(":00")?time:""}</div>
-                          <div style={{flex:1,padding:"2px 8px",background:isSel(dayView,time)?"rgba(201,168,76,.2)":dayView===today?"rgba(40,167,69,.04)":agBg,cursor:"crosshair",minHeight:36}}>
-                            {rdvs.map(rdv=>{
-                              const cl=gC(rdv.client_id),sv=gS(rdv.service_id),col=rdvCol(rdv,services);
-                              return(
-                                <div key={rdv.id} onClick={e=>{e.stopPropagation();setModal({type:"viewRdv",rdv});}} style={{background:col.bg,border:`1px solid ${col.br}55`,borderLeft:`4px solid ${col.br}`,borderRadius:4,padding:"5px 10px",marginBottom:3,cursor:"pointer"}}>
-                                  <div style={{fontSize:12,fontWeight:600,color:col.tx}}>{rdv.time} — {cl?cl.name:"Sans client"}</div>
-                                  <div style={{fontSize:11,color:col.tx,opacity:.8}}>{sv?.name}</div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ════ CAISSE ════ */}
-          {page==="caisse"&&(
-            <div style={{padding:20}}>
-              {/* Barre client */}
-              <div style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,padding:"10px 14px",marginBottom:14,boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-                <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                  <span style={{fontSize:18,color:"#bbb",flexShrink:0}}>👤</span>
-                  <div style={{flex:2,position:"relative"}}>
-                    <input
-                      placeholder="Choisir un client"
-                      value={cartCl?cartCl.name:cartClSearch}
-                      onChange={e=>{if(cartCl)setCartCl(null);setCartClSearch(e.target.value);setShowClDrop(true);}}
-                      onFocus={()=>setShowClDrop(true)}
-                      style={{border:"none",outline:"none",fontSize:14,color:cartCl?"#333":"#bbb",background:"transparent",width:"100%"}}
-                    />
-                    {cartCl&&<button onClick={()=>{setCartCl(null);setCartClSearch("");}} style={{position:"absolute",right:0,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#bbb",cursor:"pointer",fontSize:16}}>✕</button>}
-                    {showClDrop&&!cartCl&&(
-                      <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e0e0e0",borderRadius:4,boxShadow:"0 4px 12px rgba(0,0,0,.15)",zIndex:100,maxHeight:200,overflowY:"auto",marginTop:2}}>
-                        <div onClick={()=>{setShowClDrop(false);setModal("newClient");}} style={{padding:"9px 13px",cursor:"pointer",fontSize:13,color:gold,fontWeight:600,borderBottom:"1px solid #f0f0f0"}} onMouseEnter={e=>e.currentTarget.style.background="#f8f8f8"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>+ Créer un nouveau client</div>
-                        {caisseClients.map(c=>(
-                          <div key={c.id} onClick={()=>{setCartCl(c);setCartClSearch("");setShowClDrop(false);}} style={{padding:"8px 13px",cursor:"pointer",borderBottom:"1px solid #f0f0f0"}} onMouseEnter={e=>e.currentTarget.style.background="#f8f8f8"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                            <div style={{fontSize:13,fontWeight:500}}>{c.name}</div>
-                            {c.phone&&<div style={{fontSize:11,color:"#999"}}>{c.phone}</div>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <input placeholder="🇫🇷 Téléphone" defaultValue={cartCl?.phone||""} style={{flex:1,border:"1px solid #e0e0e0"}}/>
-                  <input placeholder="Email" defaultValue={cartCl?.email||""} style={{flex:1.5,border:"1px solid #e0e0e0"}}/>
-                </div>
-                {cartCl&&(
-                  <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #e0e0e0",animation:"fadeIn 0.2s"}}>
-                    <div style={{display:"flex",gap:6,marginBottom:10}}>
-                      {["Femme","Homme","Enfant","Autre"].map(g=>(
-                        <button key={g} style={{padding:"5px 12px",border:"1px solid #ddd",borderRadius:4,background:"#fff",cursor:"pointer",fontSize:12,color:"#666"}}>{g}</button>
-                      ))}
-                      <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
-                        <input placeholder="jour" style={{width:46,textAlign:"center",fontSize:12}}/>
-                        <input placeholder="mois" style={{width:50,textAlign:"center",fontSize:12}}/>
-                        <input placeholder="année" style={{width:60,textAlign:"center",fontSize:12}}/>
-                      </div>
-                    </div>
-                    <div style={{display:"flex",gap:6,marginBottom:10}}>
-                      <input placeholder="Numéro et nom de rue" style={{flex:2}}/>
-                      <input placeholder="Code postal" style={{flex:1}}/>
-                      <input placeholder="Ville" style={{flex:1}}/>
-                    </div>
-                    <input placeholder="Info client" defaultValue={cartCl.notes||""} style={{marginBottom:8}}/>
-                    <div style={{display:"flex",gap:16,fontSize:12,color:"#666"}}>
-                      <span>📎 Pièces jointes (0)</span>
-                      <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer"}}><input type="checkbox" defaultChecked style={{width:"auto"}}/> SMS de rappel</label>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{display:"flex",gap:8,marginBottom:16}}>
-                <span style={{fontSize:18,color:"#bbb"}}>+</span>
-                <button className="btn bg bsm">Prestation</button>
-                <button className="btn bg bsm">Produit</button>
-                <button className="btn bg bsm">Montant libre</button>
-                <button className="btn bg bsm">Remise</button>
-              </div>
-
-              <div style={{display:"grid",gridTemplateColumns:"1fr 350px",gap:18}} onClick={()=>setShowClDrop(false)}>
-                <div>
-                  {CATS.map(cat=>{
-                    const svcs=services.filter(s=>s.category===cat);
-                    if(!svcs.length)return null;
-                    return(
-                      <div key={cat} style={{marginBottom:14}}>
-                        <div style={{fontSize:10,color:"#999",letterSpacing:"1.5px",textTransform:"uppercase",marginBottom:7,paddingBottom:5,borderBottom:"1px solid #e0e0e0",fontWeight:600}}>{cat}</div>
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:7}}>
-                          {svcs.map(s=>(
-                            <button key={s.id} onClick={()=>addCart("service",s.id)} style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,padding:"9px 11px",cursor:"pointer",textAlign:"left",transition:"border-color 0.15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor=gold} onMouseLeave={e=>e.currentTarget.style.borderColor="#e0e0e0"}>
-                              <div style={{fontSize:13,fontWeight:500,marginBottom:3}}>{s.name}</div>
-                              <div style={{display:"flex",justifyContent:"space-between"}}>
-                                <span style={{fontSize:12,color:gold,fontWeight:600}}>{Number(s.price)===0?"Offert":eur(s.price)}</span>
-                                <span style={{fontSize:10,color:"#bbb"}}>{s.duration}min</span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {/* Ticket */}
-                <div style={{position:"sticky",top:0,alignSelf:"start"}}>
-                  <div style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,boxShadow:"0 2px 8px rgba(0,0,0,.07)"}}>
-                    <div style={{padding:"10px 14px",borderBottom:"1px solid #e0e0e0",background:"#f8f8f8",borderRadius:"6px 6px 0 0"}}><div style={{fontSize:14,fontWeight:600}}>Ticket</div></div>
-                    <div style={{padding:14}}>
-                      <div style={{minHeight:50,marginBottom:10}}>
-                        {cartItems.length===0?<div style={{textAlign:"center",color:"#bbb",fontSize:12,padding:"14px 0"}}>Ajouter une prestation</div>:cartItems.map(item=>{
-                          const f=gI(item);if(!f)return null;
-                          return(
-                            <div key={`${item.type}-${item.id}`} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 0",borderBottom:"1px solid #f0f0f0"}}>
-                              <div style={{flex:1,overflow:"hidden"}}>
-                                <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</div>
-                                <div style={{fontSize:10,color:"#bbb"}}>{item.type==="service"?"Prestation":"Produit"}</div>
-                              </div>
-                              <button onClick={()=>setCartItems(p=>p.map(i=>i.type===item.type&&i.id===item.id?{...i,qty:Math.max(1,i.qty-1)}:i))} style={{border:"1px solid #e0e0e0",background:"#fff",width:20,height:20,borderRadius:3,cursor:"pointer",fontSize:12}}>−</button>
-                              <span style={{fontSize:12,minWidth:14,textAlign:"center"}}>{item.qty}</span>
-                              <button onClick={()=>setCartItems(p=>p.map(i=>i.type===item.type&&i.id===item.id?{...i,qty:i.qty+1}:i))} style={{border:"1px solid #e0e0e0",background:"#fff",width:20,height:20,borderRadius:3,cursor:"pointer",fontSize:12}}>+</button>
-                              <span style={{fontSize:12,fontWeight:500,minWidth:50,textAlign:"right"}}>{eur(Number(f.price)*item.qty)}</span>
-                              <button onClick={()=>setCartItems(p=>p.filter(i=>!(i.type===item.type&&i.id===item.id)))} style={{background:"none",border:"none",color:"#bbb",cursor:"pointer",fontSize:13}}>✕</button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:10}}>
-                        <div><label style={{fontSize:10,color:"#999",display:"block",marginBottom:3}}>Remise (€)</label><input type="number" min="0" placeholder="0" value={cDisc} onChange={e=>setCDisc(e.target.value)}/></div>
-                        <div><label style={{fontSize:10,color:"#999",display:"block",marginBottom:3}}>Pourboire (€)</label><input type="number" min="0" placeholder="0" value={cTip} onChange={e=>setCTip(e.target.value)}/></div>
-                      </div>
-                      <div style={{marginBottom:10}}>
-                        <label style={{fontSize:10,color:"#999",display:"block",marginBottom:5}}>Mode de paiement</label>
-                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:5}}>
-                          {[["card","💳 Carte"],["cash","💶 Espèces"],["transfer","📲 Virement"]].map(([k,l])=>(
-                            <button key={k} onClick={()=>setCPay(k)} style={{padding:"6px 3px",border:`2px solid ${cPay===k?gold:"#e0e0e0"}`,background:cPay===k?`${gold}15`:"#fff",borderRadius:5,cursor:"pointer",fontSize:11,fontWeight:cPay===k?600:400,color:cPay===k?gold:"#666"}}>{l}</button>
-                          ))}
-                        </div>
-                      </div>
-                      {cartItems.length>0&&<button onClick={()=>{setCartItems([]);setCDisc("");setCTip("");}} style={{width:"100%",marginBottom:6,background:"none",border:"none",color:"#bbb",cursor:"pointer",fontSize:11,textDecoration:"underline"}}>Vider le ticket</button>}
-                    </div>
-                    <div style={{padding:"10px 14px",borderTop:"1px solid #e0e0e0"}}>
-                      <button className="btn bg" onClick={encaisser} disabled={!cartItems.length||saving} style={{width:"100%",padding:"12px",fontSize:14,fontWeight:600,borderRadius:5}}>
-                        {saving?<><div className="spin"/>Enregistrement…</>:`Paiement ${eur(cartTotal)}`}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Transactions */}
-              {(caisseSection==="tickets"||caisseSection==="reglements")&&(
-                <div style={{marginTop:20}}>
-                  <div style={{display:"flex",gap:7,marginBottom:12,alignItems:"center"}}>
-                    {[["all","Tous"],["card","💳"],["cash","💶"],["transfer","📲"]].map(([k,l])=>(
-                      <button key={k} onClick={()=>setHFilter(k)} className="btn bw bxs" style={{borderColor:hFilter===k?gold:"#ddd",color:hFilter===k?gold:"#666"}}>{l}</button>
-                    ))}
-                    <input type="date" value={hDate} onChange={e=>setHDate(e.target.value)} style={{width:"auto",padding:"4px 10px",fontSize:12}}/>
-                    {hDate&&<button onClick={()=>setHDate("")} className="btn bw bxs">✕</button>}
-                    <span style={{marginLeft:"auto",fontSize:13,color:"#666"}}>Total : <strong style={{color:gold}}>{eur(filtTxs.reduce((s,t)=>s+Number(t.total||0),0))}</strong></span>
-                  </div>
-                  <div style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,overflow:"hidden"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse"}}>
-                      <thead><tr style={{background:"#f8f8f8",borderBottom:"2px solid #e0e0e0"}}>{["Date","Client","Prestations","Mode","Remise","Pourboire","Total"].map(h=><th key={h} style={{padding:"9px 12px",textAlign:"left",fontSize:11,color:"#666",fontWeight:600}}>{h}</th>)}</tr></thead>
-                      <tbody>
-                        {filtTxs.slice(0,50).map(tx=>{
-                          const cl=gC(tx.client_id);
-                          return(
-                            <tr key={tx.id} className="tr" style={{borderBottom:"1px solid #f0f0f0"}}>
-                              <td style={{padding:"8px 12px",fontSize:12,color:"#666"}}>{fmt3(tx.date)}</td>
-                              <td style={{padding:"8px 12px",fontSize:13,fontWeight:500}}>{cl?cl.name:"Anonyme"}</td>
-                              <td style={{padding:"8px 12px",fontSize:11,color:"#666",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(tx.items||[]).map(i=>gI(i)?.name).filter(Boolean).join(", ")}</td>
-                              <td style={{padding:"8px 12px"}}>{pm(tx)==="card"?"💳":pm(tx)==="cash"?"💶":"📲"}</td>
-                              <td style={{padding:"8px 12px",fontSize:12,color:Number(tx.discount)>0?amber:"#ccc"}}>{Number(tx.discount)>0?`−${eur(tx.discount)}`:"—"}</td>
-                              <td style={{padding:"8px 12px",fontSize:12,color:Number(tx.tip)>0?green:"#ccc"}}>{Number(tx.tip)>0?`+${eur(tx.tip)}`:"—"}</td>
-                              <td style={{padding:"8px 12px",fontSize:14,fontWeight:600,color:gold}}>{eur(tx.total)}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {caisseSection==="indicateurs"&&(
-                <div style={{marginTop:20}}>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
-                    {[{l:"CA TTC",v:eur(mRev)},{l:"TVA",v:eur(mRev*0.2/1.2)},{l:"CA HT",v:eur(mRev/1.2)},{l:"Panier moyen",v:eur(mTxs.length?mRev/mTxs.length:0)}].map(({l,v})=>(
-                      <div key={l} style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,padding:"14px 18px"}}>
-                        <div style={{fontSize:11,color:"#666",marginBottom:5}}>{l}</div>
-                        <div style={{fontSize:22,fontWeight:600,color:gold}}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {caisseSection==="etat-stocks"&&(
-                <div style={{marginTop:20}}>
-                  <div style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,overflow:"hidden"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse"}}>
-                      <thead><tr style={{background:"#f8f8f8",borderBottom:"2px solid #e0e0e0"}}>{["Produit","Prix","Stock","Actions"].map(h=><th key={h} style={{padding:"9px 12px",textAlign:"left",fontSize:11,color:"#666",fontWeight:600}}>{h}</th>)}</tr></thead>
-                      <tbody>
-                        {products.map(p=>(
-                          <tr key={p.id} className="tr" style={{borderBottom:"1px solid #f0f0f0"}}>
-                            <td style={{padding:"8px 12px",fontSize:13,fontWeight:500}}>{p.name}</td>
-                            <td style={{padding:"8px 12px",fontSize:13,fontWeight:600,color:gold}}>{eur(p.price)}</td>
-                            <td style={{padding:"8px 12px"}}><span style={{fontSize:13,fontWeight:600,color:p.stock<=2?red:p.stock<=5?amber:green}}>{p.stock}</span></td>
-                            <td style={{padding:"8px 12px"}}>
-                              <div style={{display:"flex",gap:4}}>
-                                <button className="btn bw bxs" onClick={()=>db.patch("products",p.id,{stock:(p.stock||0)+1}).then(load)}>+</button>
-                                <button className="btn bw bxs" onClick={()=>db.patch("products",p.id,{stock:Math.max(0,(p.stock||0)-1)}).then(load)}>-</button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* CLIENTS */}
-          {page==="clients"&&(
-            <div style={{padding:20}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-                <input placeholder="Chercher un client par nom ou téléphone" value={clSearch} onChange={e=>setClSearch(e.target.value)} style={{maxWidth:380}}/>
-                <button className="btn bg" onClick={()=>setModal("newClient")}>Créer</button>
-                <span style={{marginLeft:"auto",fontSize:13,color:"#666"}}>Nbre de clients : {clients.length}</span>
-              </div>
-              <div style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,overflow:"hidden"}}>
-                {filtCl.map(cl=>{
-                  const cTxs=txs.filter(t=>t.client_id===cl.id);
-                  const spent=cTxs.reduce((s,t)=>s+Number(t.total||0),0);
-                  const ex=expCl===cl.id;
-                  return(
-                    <div key={cl.id} style={{borderBottom:"1px solid #f0f0f0"}}>
-                      <div style={{display:"flex",alignItems:"center",padding:"10px 16px",cursor:"pointer"}} onClick={()=>setExpCl(ex?null:cl.id)}>
-                        <div style={{flex:1}}>
-                          <span style={{fontSize:14,fontWeight:600,marginRight:10}}>{cl.name}</span>
-                          {cl.phone&&<span style={{fontSize:12,color:"#666",marginRight:6}}>{cl.phone}</span>}
-                          {cl.email&&<span style={{fontSize:12,color:"#999"}}>- {cl.email}</span>}
-                        </div>
-                        <div style={{display:"flex",gap:16,alignItems:"center",marginRight:12}}>
-                          <div style={{textAlign:"center"}}><div style={{fontSize:9,color:"#bbb",textTransform:"uppercase"}}>Visites</div><div style={{fontSize:14,fontWeight:600,color:gold}}>{cl.visits||0}</div></div>
-                          <div style={{textAlign:"center"}}><div style={{fontSize:9,color:"#bbb",textTransform:"uppercase"}}>CA</div><div style={{fontSize:14,fontWeight:600,color:gold}}>{eur(spent)}</div></div>
-                        </div>
-                        <button className="btn bl bsm" onClick={e=>e.stopPropagation()}>Modifier</button>
-                        <button className="btn bd bsm" onClick={e=>e.stopPropagation()}>Supprimer</button>
-                      </div>
-                      {ex&&(
-                        <div style={{padding:"0 16px 12px",borderTop:"1px solid #f0f0f0",animation:"fadeIn 0.2s"}}>
-                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                            <div>
-                              <div style={{fontSize:10,color:"#bbb",fontWeight:600,textTransform:"uppercase",marginBottom:5}}>Dernières transactions</div>
-                              {cTxs.slice(0,4).map(tx=>(
-                                <div key={tx.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#666",padding:"4px 0",borderBottom:"1px solid #f0f0f0"}}>
-                                  <span>{fmt3(tx.date)}</span>
-                                  <span style={{flex:1,margin:"0 8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(tx.items||[]).map(i=>gI(i)?.name).filter(Boolean).join(", ")}</span>
-                                  <span style={{color:gold,fontWeight:600}}>{eur(tx.total)}</span>
-                                </div>
-                              ))}
-                              {cTxs.length===0&&<div style={{fontSize:11,color:"#bbb"}}>Aucune transaction</div>}
-                            </div>
-                            <div>
-                              <div style={{fontSize:10,color:"#bbb",fontWeight:600,textTransform:"uppercase",marginBottom:5}}>Prochain RDV</div>
-                              {appts.filter(a=>a.client_id===cl.id&&a.date>=today).slice(0,2).map(a=>{const sv=gS(a.service_id);return(<div key={a.id} style={{fontSize:11,color:"#666",padding:"4px 0",borderBottom:"1px solid #f0f0f0"}}>📅 {fmt3(a.date)} à {a.time} · {sv?.name||"—"}</div>);})}
-                              {!appts.find(a=>a.client_id===cl.id&&a.date>=today)&&<div style={{fontSize:11,color:"#bbb"}}>Aucun RDV</div>}
-                              <button className="btn bg bsm" style={{marginTop:8}} onClick={()=>{setRdvF({...emptyRdv,cid:cl.id,cs:cl.name,date:today,st:"10:00",et:"10:45"});setModal("rdv");}}>+ Prendre RDV</button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {filtCl.length===0&&<div style={{padding:40,textAlign:"center",color:"#bbb"}}>Aucun client</div>}
-              </div>
-            </div>
-          )}
-
-          {/* ADMIN */}
-          {page==="admin"&&(
-            <div style={{padding:20}}>
-              {adminSub==="prestations"&&(
-                <div>
-                  <div style={{marginBottom:16}}><button className="btn bl" onClick={()=>setModal("service")}>⊕ Ajouter une prestation</button></div>
-                  {CATS.map(cat=>{
-                    const svcs=services.filter(s=>s.category===cat);
-                    if(!svcs.length)return null;
-                    return(
-                      <div key={cat} style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,marginBottom:12,overflow:"hidden"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 14px",background:"#f8f8f8",borderBottom:"1px solid #e0e0e0"}}>
-                          <span style={{fontSize:13,fontWeight:600}}>{cat}</span>
-                          <div style={{display:"flex",gap:10}}>
-                            <button className="btn bl bxs" onClick={()=>{setSvcF({name:"",dur:"45",price:"",cat});setModal("service");}}>Ajouter</button>
-                            <button className="btn bd bxs">Supprimer</button>
-                          </div>
-                        </div>
-                        <table style={{width:"100%",borderCollapse:"collapse"}}>
-                          <thead><tr style={{borderBottom:"1px solid #e0e0e0"}}>{["Prestation","Durée","Prix","Actions"].map(h=><th key={h} style={{padding:"7px 14px",textAlign:"left",fontSize:10,color:"#999",fontWeight:500}}>{h}</th>)}</tr></thead>
-                          <tbody>
-                            {svcs.map(s=>(
-                              <tr key={s.id} className="tr" style={{borderBottom:"1px solid #f0f0f0"}}>
-                                <td style={{padding:"8px 14px",fontSize:13}}>{s.name}</td>
-                                <td style={{padding:"8px 14px",fontSize:12,color:"#666"}}>{s.duration} min</td>
-                                <td style={{padding:"8px 14px",fontSize:13,fontWeight:600,color:gold}}>{eur(s.price)}</td>
-                                <td style={{padding:"8px 14px"}}>
-                                  <button className="btn bl bxs">Modifier</button>
-                                  <button className="btn bd bxs" onClick={()=>db.patch("services",s.id,{active:false}).then(load)}>Supprimer</button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {adminSub==="corbeille"&&(
-                <div>
-                  <h3 style={{fontSize:15,fontWeight:600,marginBottom:14}}>RDV annulés dans les 30 derniers jours</h3>
-                  <div style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,overflow:"hidden"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse"}}>
-                      <thead><tr style={{background:"#f8f8f8",borderBottom:"2px solid #e0e0e0"}}>{["RDV avec","Date","Client","Prestation","Actions"].map(h=><th key={h} style={{padding:"9px 12px",textAlign:"left",fontSize:11,color:"#666",fontWeight:600}}>{h}</th>)}</tr></thead>
-                      <tbody>
-                        {cancelledAppts.map(rdv=>{const cl=gC(rdv.client_id),sv=gS(rdv.service_id);return(<tr key={rdv.id} className="tr" style={{borderBottom:"1px solid #f0f0f0"}}><td style={{padding:"8px 12px",fontSize:13}}>Elnagar</td><td style={{padding:"8px 12px",fontSize:12,color:"#666"}}>{fmt3(rdv.date)} {rdv.time}</td><td style={{padding:"8px 12px",fontSize:13,fontWeight:500}}>{cl?cl.name:"—"}</td><td style={{padding:"8px 12px",fontSize:12,color:"#666"}}>{sv?.name||"—"}</td><td style={{padding:"8px 12px"}}><button className="btn bl bxs" onClick={()=>updRdv(rdv.id,{status:"confirmed"})}>Restaurer</button></td></tr>);})}
-                        {cancelledAppts.length===0&&<tr><td colSpan={5} style={{padding:40,textAlign:"center",color:"#bbb"}}>Aucun RDV annulé</td></tr>}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-              {adminSub==="stats-rdv"&&(
-                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
-                  {[{l:"Total RDV",v:appts.length},{l:"Confirmés",v:appts.filter(a=>a.status==="confirmed").length},{l:"En attente",v:appts.filter(a=>a.status==="pending").length},{l:"Annulés",v:cancelledAppts.length}].map(({l,v})=>(
-                    <div key={l} style={{background:"#fff",border:"1px solid #e0e0e0",borderRadius:6,padding:"14px 18px"}}>
-                      <div style={{fontSize:11,color:"#666",marginBottom:5}}>{l}</div>
-                      <div style={{fontSize:24,fontWeight:600,color:gold}}>{v}</div>
+      {/* Main */}
+      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
+        <div style={{flex:1,padding:24,overflowY:"auto"}}>
+          {/* Client */}
+          <div style={{display:"flex",gap:12,marginBottom:16}}>
+            <div style={{position:"relative",flex:2}}>
+              <input value={clientSearch} onChange={e=>{setClientSearch(e.target.value);setSelectedClient(null);}} placeholder="Choisir un client" style={{width:"100%",padding:"10px 12px 10px 36px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+              <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#9ca3af"}}>👤</span>
+              {clientSearch && !selectedClient && (
+                <div style={{position:"absolute",top:"100%",left:0,right:0,border:"1px solid #e5e7eb",borderRadius:6,background:"#fff",zIndex:100,boxShadow:"0 4px 12px rgba(0,0,0,0.1)"}}>
+                  {filteredClients.slice(0,5).map(c=>(
+                    <div key={c.id} onClick={()=>{setSelectedClient(c);setClientSearch(c.nom);}} style={{padding:"8px 12px",cursor:"pointer",fontSize:14,borderBottom:"1px solid #f3f4f6"}}>
+                      <strong>{c.nom}</strong> <span style={{color:"#9ca3af"}}>{c.tel}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-          )}
-        </main>
-      </div>
+            <input placeholder="🇫🇷 Téléphone" style={{flex:1,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+            <input placeholder="Email" style={{flex:1,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+          </div>
 
-      {/* MODALS */}
-      {modal&&(
-        <div onClick={e=>e.target===e.currentTarget&&setModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
+          {/* Boutons */}
+          <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+            {["Prestation","Produit","Montant libre","Remise","RDV"].map(b=>(
+              <button key={b} onClick={()=>setModalType(b)} style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"8px 16px",cursor:"pointer",fontWeight:500,fontSize:14}}>
+                {b}
+              </button>
+            ))}
+          </div>
 
-          {modal==="rdv"&&(
-            <div style={{background:"#fff",borderRadius:8,width:"92%",maxWidth:540,animation:"slideUp 0.2s",boxShadow:"0 8px 32px rgba(0,0,0,.3)",maxHeight:"90vh",overflowY:"auto"}}>
-              <div style={{background:"#f8f8f8",borderBottom:"1px solid #e0e0e0",padding:"12px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:"8px 8px 0 0"}}>
-                <div style={{fontSize:15,fontWeight:700}}>Rendez-vous</div>
-                <div style={{display:"flex",gap:8}}>
-                  <button className="btn bw bsm" onClick={()=>setModal(null)}>←</button>
-                  <button className="btn bg bsm" onClick={saveRdv} disabled={saving}>{saving?<><div className="spin"/>…</>:"✓"}</button>
-                </div>
-              </div>
-              <div style={{padding:18}}>
-                {/* Client */}
-                <div style={{background:"#f8f8f8",border:"1px solid #e0e0e0",borderRadius:6,padding:"9px 13px",marginBottom:12}}>
-                  <div style={{display:"flex",gap:10}}>
-                    <span style={{fontSize:16,color:"#bbb",flexShrink:0}}>👤</span>
-                    <div style={{flex:1}}>
-                      {!rdvF.newCl?(
-                        <div style={{position:"relative"}}>
-                          <input placeholder="Choisir un client" value={rdvF.cs} onChange={e=>setRdvF(p=>({...p,cs:e.target.value,showList:true,cid:""}))} onFocus={()=>setRdvF(p=>({...p,showList:true}))} style={{border:"none",background:"transparent",fontSize:13,outline:"none",width:"100%"}}/>
-                          {rdvF.showList&&(
-                            <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e0e0e0",borderRadius:4,boxShadow:"0 4px 12px rgba(0,0,0,.15)",zIndex:100,maxHeight:200,overflowY:"auto",marginTop:2}}>
-                              <div onClick={()=>setRdvF(p=>({...p,newCl:true,showList:false,cs:""}))} style={{padding:"9px 13px",cursor:"pointer",fontSize:13,color:gold,fontWeight:600,borderBottom:"1px solid #f0f0f0"}} onMouseEnter={e=>e.currentTarget.style.background="#f8f8f8"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>+ Créer un nouveau client</div>
-                              {rdvClients.map(c=>(
-                                <div key={c.id} onClick={()=>setRdvF(p=>({...p,cid:c.id,cs:c.name,showList:false}))} style={{padding:"8px 13px",cursor:"pointer",borderBottom:"1px solid #f0f0f0"}} onMouseEnter={e=>e.currentTarget.style.background="#f8f8f8"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                                  <div style={{fontSize:13,fontWeight:500}}>{c.name}</div>
-                                  {c.phone&&<div style={{fontSize:11,color:"#999"}}>{c.phone}</div>}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ):(
-                        <div>
-                          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                            <span style={{fontSize:12,fontWeight:600,color:gold}}>Nouveau client</span>
-                            <button onClick={()=>setRdvF(p=>({...p,newCl:false}))} style={{background:"none",border:"none",fontSize:11,color:"#999",cursor:"pointer"}}>← Choisir existant</button>
-                          </div>
-                          {[{l:"Nom *",k:"name",t:"text",p:"Prénom Nom"},{l:"Téléphone",k:"phone",t:"tel",p:"06 00 00 00 00"},{l:"Email",k:"email",t:"email",p:"email@exemple.com"},{l:"Date de naissance",k:"birthday",t:"date"},{l:"Adresse",k:"address",t:"text",p:"Adresse postale"}].map(f=>(
-                            <div key={f.k} style={{marginBottom:7}}><label style={{fontSize:10,color:"#999",display:"block",marginBottom:3}}>{f.l}</label><input type={f.t} placeholder={f.p||""} value={rdvF.ncd[f.k]} onChange={e=>setRdvF(p=>({...p,ncd:{...p.ncd,[f.k]:e.target.value}}))} style={{fontSize:12}}/></div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+          {/* Liste ticket */}
+          {ticket.length===0 ? (
+            <div style={{color:"#9ca3af",textAlign:"center",marginTop:40,fontSize:14}}>Ajouter une prestation ou un produit</div>
+          ) : (
+            <div>
+              {ticket.map((item,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f3f4f6"}}>
+                  <div>
+                    <div style={{fontWeight:500,fontSize:14}}>{item.nom}</div>
+                    {item.duree && <div style={{color:"#9ca3af",fontSize:12}}>{item.duree} min</div>}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <span style={{color:"#c9a84c",fontWeight:600}}>{fmt(item.prix)}</span>
+                    <button onClick={()=>setTicket(t=>t.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:16}}>×</button>
                   </div>
                 </div>
-
-                {/* Date heure */}
-                <div style={{background:"#f8f8f8",border:"1px solid #e0e0e0",borderRadius:6,padding:"9px 13px",marginBottom:12,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-                  <span style={{fontSize:16,color:"#bbb"}}>📅</span>
-                  <input type="date" value={rdvF.date} onChange={e=>setRdvF(p=>({...p,date:e.target.value}))} style={{flex:1,border:"none",background:"transparent",fontSize:13,outline:"none"}}/>
-                  <span style={{color:"#bbb",fontSize:12}}>de</span>
-                  <select value={rdvF.st} onChange={e=>setRdvF(p=>({...p,st:e.target.value}))} style={{flex:1,border:"none",background:"transparent",fontSize:13,outline:"none"}}>
-                    <option value="">Heure</option>{HOURS.map(h=><option key={h} value={h}>{h}</option>)}
-                  </select>
-                  <span style={{color:"#bbb",fontSize:12}}>à</span>
-                  <select value={rdvF.et} onChange={e=>setRdvF(p=>({...p,et:e.target.value}))} style={{flex:1,border:"none",background:"transparent",fontSize:13,outline:"none"}}>
-                    <option value="">Fin</option>{HOURS.map(h=><option key={h} value={h}>{h}</option>)}
-                  </select>
-                </div>
-
-                {/* Prestation */}
-                <div style={{background:"#f8f8f8",border:"1px solid #e0e0e0",borderRadius:6,padding:"9px 13px",marginBottom:12,display:"flex",gap:10,alignItems:"center"}}>
-                  <span style={{fontSize:16,color:"#bbb"}}>✂️</span>
-                  <select value={rdvF.sid} onChange={e=>setRdvF(p=>({...p,sid:e.target.value}))} style={{flex:1,border:"none",background:"transparent",fontSize:13,outline:"none",color:rdvF.sid?"#333":"#bbb"}}>
-                    <option value="">Choisir une prestation</option>
-                    {CATS.map(cat=>(<optgroup key={cat} label={cat}>{services.filter(s=>s.category===cat).map(s=><option key={s.id} value={s.id}>{s.name} — {s.duration}min — {eur(s.price)}</option>)}</optgroup>))}
-                  </select>
-                  <span style={{fontSize:12,color:"#bbb"}}>Avec</span>
-                  <span style={{fontSize:13,fontWeight:600,color:gold}}>Elnagar</span>
-                </div>
-
-                <select value={rdvF.status} onChange={e=>setRdvF(p=>({...p,status:e.target.value}))} style={{marginBottom:12,fontSize:13}}>
-                  <option value="confirmed">Confirmé</option>
-                  <option value="pending">En attente</option>
-                </select>
-                <textarea rows={2} placeholder="Ajouter une note…" value={rdvF.notes} onChange={e=>setRdvF(p=>({...p,notes:e.target.value}))} style={{marginBottom:12,fontSize:13}}/>
-
-                <div style={{display:"flex",gap:12,paddingTop:12,borderTop:"1px solid #e0e0e0",flexWrap:"wrap",alignItems:"center"}}>
-                  <button className="btn bl bsm" style={{color:"#666"}}>🔒 Choisi(e)</button>
-                  <button className="btn bl bsm" style={{color:green}}>✓ Venu</button>
-                  <button className="btn bd bsm">✗ Pas venu</button>
-                  <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-                    <button className="btn bl bsm">Copier</button>
-                    <button className="btn bl bsm">Couper</button>
-                    <button className="btn bd bsm">Supprimer</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {modal?.type==="viewRdv"&&(()=>{
-            const r=modal.rdv,cl=gC(r.client_id),sv=gS(r.service_id),col=rdvCol(r,services);
-            return(
-              <div style={{background:"#fff",borderRadius:8,width:"92%",maxWidth:480,animation:"slideUp 0.2s",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}}>
-                <div style={{background:"#f8f8f8",borderBottom:"1px solid #e0e0e0",padding:"12px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",borderRadius:"8px 8px 0 0"}}>
-                  <div style={{fontSize:15,fontWeight:700}}>Rendez-vous</div>
-                  <button onClick={()=>setModal(null)} style={{background:"none",border:"none",fontSize:17,cursor:"pointer",color:"#999"}}>✕</button>
-                </div>
-                <div style={{padding:18}}>
-                  <div style={{background:"#f8f8f8",border:"1px solid #e0e0e0",borderRadius:6,padding:"9px 13px",marginBottom:10,display:"flex",gap:10}}>
-                    <span>👤</span><div><div style={{fontSize:14,fontWeight:600}}>{cl?cl.name:"Sans client"}</div>{cl?.phone&&<div style={{fontSize:12,color:"#666"}}>{cl.phone}</div>}</div>
-                  </div>
-                  <div style={{background:"#f8f8f8",border:"1px solid #e0e0e0",borderRadius:6,padding:"9px 13px",marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
-                    <span>📅</span><div style={{fontSize:13}}>{fmt3(r.date)} · {r.time}<span style={{color:"#bbb",marginLeft:8}}>({sv?.duration||"—"} min)</span></div>
-                  </div>
-                  <div style={{background:col.bg,border:`1px solid ${col.br}55`,borderRadius:6,padding:"9px 13px",marginBottom:10,display:"flex",gap:10,alignItems:"center"}}>
-                    <span>✂️</span>
-                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:500,color:col.tx}}>{sv?.name||"—"}</div><div style={{fontSize:12,color:col.tx,opacity:.8}}>{sv?eur(sv.price):"—"}</div></div>
-                  </div>
-                  {r.notes&&<div style={{marginBottom:10,padding:"7px 10px",background:"#fff3cd",borderRadius:4,fontSize:12,color:"#856404"}}>📋 {r.notes}</div>}
-                  <div style={{display:"flex",gap:10,paddingTop:12,borderTop:"1px solid #e0e0e0",flexWrap:"wrap"}}>
-                    <span className={r.status==="confirmed"?"t-ok":r.status==="cancelled"?"t-no":"t-wait"}>{r.status==="confirmed"?"Confirmé":r.status==="cancelled"?"Annulé":"En attente"}</span>
-                    <button className="btn bg bsm" onClick={()=>{setModal(null);setPage("caisse");addCart("service",r.service_id);setCartCl(gC(r.client_id)||null);}}>→ Encaisser</button>
-                    {r.status!=="confirmed"&&<button className="btn bw bsm" onClick={()=>updRdv(r.id,{status:"confirmed"})}>✓ Confirmer</button>}
-                    {r.status==="confirmed"&&<button className="btn bw bsm" onClick={()=>updRdv(r.id,{status:"cancelled"})}>Annuler</button>}
-                    <div style={{marginLeft:"auto",display:"flex",gap:8}}>
-                      <button className="btn bd bsm" onClick={()=>delRdv(r.id)}>Supprimer</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
-          {modal==="newClient"&&(()=>{
-            const [nd,setNd]=useState({name:"",phone:"",email:"",birthday:"",address:"",notes:""});
-            return(
-              <div style={{background:"#fff",borderRadius:8,width:"92%",maxWidth:420,animation:"slideUp 0.2s",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}}>
-                <div style={{background:"#f8f8f8",borderBottom:"1px solid #e0e0e0",padding:"12px 18px",borderRadius:"8px 8px 0 0"}}><div style={{fontSize:15,fontWeight:700}}>Nouveau client</div></div>
-                <div style={{padding:18}}>
-                  <div style={{display:"grid",gap:10,marginBottom:16}}>
-                    {[{l:"Nom complet *",k:"name",t:"text",p:"Prénom Nom"},{l:"Téléphone",k:"phone",t:"tel",p:"06 00 00 00 00"},{l:"Email",k:"email",t:"email",p:"email@exemple.com"},{l:"Date de naissance",k:"birthday",t:"date"},{l:"Adresse",k:"address",t:"text",p:"Adresse postale"},{l:"Notes",k:"notes",t:"text",p:"Allergies, préférences…"}].map(f=>(
-                      <div key={f.k}><label style={{fontSize:11,color:"#666",display:"block",marginBottom:3}}>{f.l}</label><input type={f.t} placeholder={f.p||""} value={nd[f.k]} onChange={e=>setNd(p=>({...p,[f.k]:e.target.value}))}/></div>
-                    ))}
-                  </div>
-                  <div style={{display:"flex",gap:10}}>
-                    <button className="btn bw" onClick={()=>setModal(null)} style={{flex:1}}>Annuler</button>
-                    <button className="btn bg" onClick={async()=>{if(!nd.name)return notify("Nom requis","err");setSaving(true);await db.post("clients",{name:nd.name,phone:nd.phone||null,email:nd.email||null,notes:nd.notes||null,visits:0,loyalty:0});setSaving(false);await load();setModal(null);notify("Client créé ✓");}} disabled={saving} style={{flex:2}}>{saving?<><div className="spin"/>…</>:"Créer le client"}</button>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
-          {modal==="service"&&(
-            <div style={{background:"#fff",borderRadius:8,padding:22,width:"92%",maxWidth:360,animation:"slideUp 0.2s",boxShadow:"0 8px 32px rgba(0,0,0,.3)"}}>
-              <div style={{fontSize:15,fontWeight:700,marginBottom:16}}>Nouvelle prestation</div>
-              <div style={{display:"grid",gap:10,marginBottom:16}}>
-                <div><label style={{fontSize:11,color:"#666",display:"block",marginBottom:3}}>Nom *</label><input placeholder="Coupe Homme" value={svcF.name} onChange={e=>setSvcF(p=>({...p,name:e.target.value}))}/></div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  <div><label style={{fontSize:11,color:"#666",display:"block",marginBottom:3}}>Durée (min)</label><input type="number" value={svcF.dur} onChange={e=>setSvcF(p=>({...p,dur:e.target.value}))}/></div>
-                  <div><label style={{fontSize:11,color:"#666",display:"block",marginBottom:3}}>Prix (€) *</label><input type="number" value={svcF.price} onChange={e=>setSvcF(p=>({...p,price:e.target.value}))}/></div>
-                </div>
-                <div><label style={{fontSize:11,color:"#666",display:"block",marginBottom:3}}>Catégorie</label><select value={svcF.cat} onChange={e=>setSvcF(p=>({...p,cat:e.target.value}))}>{CATS.map(c=><option key={c}>{c}</option>)}</select></div>
-              </div>
-              <div style={{display:"flex",gap:10}}>
-                <button className="btn bw" onClick={()=>setModal(null)} style={{flex:1}}>Annuler</button>
-                <button className="btn bg" onClick={async()=>{if(!svcF.name||!svcF.price)return notify("Requis","err");setSaving(true);await db.post("services",{name:svcF.name,duration:Number(svcF.dur)||45,price:Number(svcF.price),category:svcF.cat,active:true});setSaving(false);await load();setModal(null);notify("Ajouté ✓");}} disabled={saving} style={{flex:2}}>{saving?<><div className="spin"/>…</>:"Ajouter"}</button>
-              </div>
+              ))}
             </div>
           )}
         </div>
+
+        {/* Panel ticket */}
+        <div style={{width:280,borderLeft:"1px solid #e5e7eb",padding:20,background:"#f9fafb",display:"flex",flexDirection:"column"}}>
+          <div style={{fontWeight:600,fontSize:16,marginBottom:16}}>Ticket</div>
+          {ticket.length===0 ? (
+            <div style={{color:"#9ca3af",fontSize:13,flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"}}>Ajouter une prestation</div>
+          ) : (
+            <div style={{flex:1}}>
+              {ticket.map((i,idx)=>(
+                <div key={idx} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
+                  <span>{i.nom}</span><span style={{color:"#c9a84c"}}>{fmt(i.prix)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{marginTop:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+              <div>
+                <div style={{fontSize:11,color:"#9ca3af",marginBottom:4}}>Remise (€)</div>
+                <input type="number" value={remise} onChange={e=>setRemise(Number(e.target.value))} style={{width:"100%",padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13,boxSizing:"border-box"}} />
+              </div>
+              <div>
+                <div style={{fontSize:11,color:"#9ca3af",marginBottom:4}}>Pourboire (€)</div>
+                <input type="number" value={pourboire} onChange={e=>setPourboire(Number(e.target.value))} style={{width:"100%",padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13,boxSizing:"border-box"}} />
+              </div>
+            </div>
+            <div style={{fontSize:12,color:"#6b7280",marginBottom:8}}>Mode de paiement</div>
+            <div style={{display:"flex",gap:4,marginBottom:16}}>
+              {["Carte","Espèces","Virement"].map(m=>(
+                <button key={m} onClick={()=>setPaiement(m)} style={{flex:1,padding:"6px 4px",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",background:paiement===m?"#c9a84c":"#fff",color:paiement===m?"#fff":"#374151",fontSize:12,fontWeight:paiement===m?600:400}}>
+                  {m==="Carte"?"💳 ":m==="Espèces"?"💵 ":"🏦 "}{m}
+                </button>
+              ))}
+            </div>
+            <button style={{width:"100%",background:total>0?"#c9a84c":"#e5e7eb",color:total>0?"#fff":"#9ca3af",border:"none",borderRadius:6,padding:"12px",fontSize:15,fontWeight:600,cursor:total>0?"pointer":"default"}}>
+              Paiement {fmt(totalNet+pourboire)}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      {modalType==="Prestation" && (
+        <Modal title="Choisir une prestation" onClose={()=>setModalType(null)} width="700px">
+          <div style={{display:"flex",gap:0}}>
+            <div style={{width:180,borderRight:"1px solid #e5e7eb",paddingRight:12}}>
+              {Object.keys(PRESTATIONS_CAISSE).map(cat=>(
+                <div key={cat} style={{padding:"10px 12px",cursor:"pointer",borderRadius:6,fontWeight:500,fontSize:14,marginBottom:2,color:"#374151"}}>{cat}</div>
+              ))}
+              <div style={{padding:"10px 12px",cursor:"pointer",borderRadius:6,color:"#c9a84c",fontSize:14,display:"flex",alignItems:"center",gap:4}}>⊕ Créer une prestation</div>
+            </div>
+            <div style={{flex:1,paddingLeft:12}}>
+              <input placeholder="Choisir une prestation" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,marginBottom:12,boxSizing:"border-box"}} />
+              {Object.values(PRESTATIONS_CAISSE).flat().map(p=>(
+                <div key={p.id} onClick={()=>{setTicket(t=>[...t,p]);setModalType(null);}} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer",fontSize:14}}>
+                  <div style={{borderLeft:`3px solid ${p.couleur}`,paddingLeft:8}}>
+                    <div style={{fontWeight:500}}>{p.nom}</div>
+                    <div style={{color:"#9ca3af",fontSize:12}}>{p.duree>0?`${p.duree}min`:""}</div>
+                  </div>
+                  <span style={{color:"#c9a84c",fontWeight:500}}>{p.prix===0?"Gratuit":`${p.prix},00 €`}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Modal>
       )}
+
+      {modalType==="Produit" && (
+        <Modal title="Choisir un produit" onClose={()=>setModalType(null)} width="700px">
+          <div style={{display:"flex",gap:0}}>
+            <div style={{width:180,borderRight:"1px solid #e5e7eb",paddingRight:12}}>
+              {Object.keys(PRODUITS_CAISSE).map(cat=>(
+                <div key={cat} style={{padding:"10px 12px",cursor:"pointer",borderRadius:6,fontWeight:500,fontSize:14,marginBottom:2,color:"#374151"}}>{cat}</div>
+              ))}
+            </div>
+            <div style={{flex:1,paddingLeft:12}}>
+              <input placeholder="Choisir un produit" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,marginBottom:12,boxSizing:"border-box"}} />
+              {Object.values(PRODUITS_CAISSE).flat().map(p=>(
+                <div key={p.id} onClick={()=>{setTicket(t=>[...t,{...p,duree:null}]);setModalType(null);}} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer",fontSize:14}}>
+                  <div><div style={{fontWeight:500}}>{p.nom}</div></div>
+                  <span style={{color:"#c9a84c",fontWeight:500}}>{p.prix},00 € · <span style={{color:"#9ca3af",fontWeight:400}}>{p.stock} en stock</span></span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {modalType==="Remise" && (
+        <Modal title="Appliquer une remise" onClose={()=>setModalType(null)} width="480px">
+          <div>
+            {REMISES_DATA.map(r=>(
+              <div key={r.id} onClick={()=>{setRemise(r.type==="fixe"?r.valeur:total*r.valeur/100);setModalType(null);}} style={{display:"flex",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer",fontSize:14}}>
+                <span style={{fontWeight:500}}>{r.nom}</span>
+                <span style={{color:"#c9a84c"}}>{r.type==="fixe"?`-${r.valeur} €`:`-${r.valeur} %`}</span>
+              </div>
+            ))}
+            <div style={{marginTop:16}}>
+              <label style={{fontSize:12,color:"#6b7280",display:"block",marginBottom:4}}>Montant libre</label>
+              <input type="number" placeholder="0" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter"){setRemise(Number(e.target.value));setModalType(null);}}} />
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─── CLIENTS ──────────────────────────────────────────────────────────────────
+function ClientsView() {
+  const [activeSection, setActiveSection] = useState("Gestion");
+  const [openSections, setOpenSections] = useState({fichier:true});
+  const [search, setSearch] = useState("");
+
+  const toggle = (k) => setOpenSections(s=>({...s,[k]:!s[k]}));
+  const filtered = CLIENTS_DATA.filter(c=>c.nom.toLowerCase().includes(search.toLowerCase())||c.tel.includes(search));
+
+  return (
+    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+      {/* Sidebar */}
+      <div style={{width:220,background:"#0d1b2a",borderRight:"1px solid #1e3a5f",overflowY:"auto",flexShrink:0}}>
+        <SidebarSection label="Fichier client" open={openSections.fichier} onToggle={()=>toggle("fichier")}>
+          <div onClick={()=>setActiveSection("Gestion")} style={{padding:"8px 16px 8px 28px",cursor:"pointer",color:activeSection==="Gestion"?"#c9a84c":"#94a3b8",fontSize:14,borderLeft:activeSection==="Gestion"?"3px solid #c9a84c":"3px solid transparent"}}>Gestion</div>
+          <div onClick={()=>setActiveSection("Doublons")} style={{padding:"8px 16px 8px 28px",cursor:"pointer",color:activeSection==="Doublons"?"#c9a84c":"#94a3b8",fontSize:14,borderLeft:activeSection==="Doublons"?"3px solid #c9a84c":"3px solid transparent"}}>Doublons</div>
+        </SidebarSection>
+        <SidebarSection label="Mes avis" open={openSections.avis} onToggle={()=>toggle("avis")}>
+          {["Avis à modérer","Avis modérés","Avis refusés","Règles de modération","Statistiques avis"].map(i=>(
+            <div key={i} onClick={()=>setActiveSection(i)} style={{padding:"8px 16px 8px 28px",cursor:"pointer",color:activeSection===i?"#c9a84c":"#94a3b8",fontSize:13,borderLeft:activeSection===i?"3px solid #c9a84c":"3px solid transparent"}}>{i}</div>
+          ))}
+        </SidebarSection>
+        <SidebarSection label="Statistiques clients" open={openSections.stats} onToggle={()=>toggle("stats")}>
+          {["100 meilleurs clients","Nouveaux clients","Fréquences globales"].map(i=>(
+            <div key={i} onClick={()=>setActiveSection(i)} style={{padding:"8px 16px 8px 28px",cursor:"pointer",color:activeSection===i?"#c9a84c":"#94a3b8",fontSize:13,borderLeft:activeSection===i?"3px solid #c9a84c":"3px solid transparent"}}>{i}</div>
+          ))}
+        </SidebarSection>
+      </div>
+
+      {/* Main */}
+      <div style={{flex:1,padding:24,overflowY:"auto",background:"#fff"}}>
+        {(activeSection==="Gestion"||activeSection==="Doublons") && (
+          <>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div style={{display:"flex",gap:12,flex:1}}>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Chercher un client par nom ou téléphone" style={{flex:1,maxWidth:400,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <Btn>Créer</Btn>
+              </div>
+              <div style={{display:"flex",gap:12,color:"#6b7280",fontSize:13,alignItems:"center"}}>
+                <span style={{cursor:"pointer",textDecoration:"underline"}}>Afficher les clients supprimés</span>
+                <span>Nbre de clients: {CLIENTS_DATA.length}</span>
+              </div>
+            </div>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <tbody>
+                {filtered.map(c=>(
+                  <tr key={c.id} style={{borderBottom:"1px solid #f3f4f6"}}>
+                    <td style={{padding:"12px 8px",fontSize:14}}>
+                      <strong>{c.nom}</strong>{" "}
+                      <span style={{color:"#6b7280"}}>{c.tel}{c.email?` - ${c.email}`:""}</span>
+                    </td>
+                    {c.visites>0 && <>
+                      <td style={{padding:"12px 8px",color:"#c9a84c",fontSize:12,textAlign:"right",width:80}}>{c.visites} visites</td>
+                      <td style={{padding:"12px 8px",color:"#c9a84c",fontSize:12,textAlign:"right",width:80}}>{fmt(c.ca)}</td>
+                    </>}
+                    <td style={{padding:"12px 8px",textAlign:"right",width:160}}>
+                      <span style={{color:"#6b7280",cursor:"pointer",fontSize:13,marginRight:8}}>Modifier</span>
+                      <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+        {activeSection==="100 meilleurs clients" && (
+          <div>
+            <h3 style={{fontSize:18,fontWeight:600,marginBottom:16}}>100 meilleurs clients</h3>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr style={{background:"#f9fafb",borderBottom:"2px solid #e5e7eb"}}>
+                <th style={{padding:"10px 8px",textAlign:"left",fontSize:13,fontWeight:600}}>Client</th>
+                <th style={{padding:"10px 8px",textAlign:"right",fontSize:13,fontWeight:600}}>Visites</th>
+                <th style={{padding:"10px 8px",textAlign:"right",fontSize:13,fontWeight:600}}>CA</th>
+              </tr></thead>
+              <tbody>
+                {[...CLIENTS_DATA].sort((a,b)=>b.ca-a.ca).map(c=>(
+                  <tr key={c.id} style={{borderBottom:"1px solid #f3f4f6"}}>
+                    <td style={{padding:"10px 8px",fontSize:14}}><strong>{c.nom}</strong> <span style={{color:"#9ca3af",fontSize:12}}>{c.tel}</span></td>
+                    <td style={{padding:"10px 8px",textAlign:"right",color:"#c9a84c",fontSize:13}}>{c.visites}</td>
+                    <td style={{padding:"10px 8px",textAlign:"right",color:"#c9a84c",fontSize:13}}>{fmt(c.ca)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {(activeSection==="Avis à modérer"||activeSection==="Avis modérés"||activeSection==="Avis refusés") && (
+          <div style={{textAlign:"center",color:"#9ca3af",marginTop:60,fontSize:14}}>Aucun avis à afficher pour le moment.</div>
+        )}
+        {activeSection==="Statistiques avis" && (
+          <div>
+            <h3 style={{fontSize:18,fontWeight:600,marginBottom:16}}>Statistiques avis</h3>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
+              {[{l:"Note moyenne",v:"4.8/5"},{l:"Total avis",v:"47"},{l:"Taux de réponse",v:"92%"}].map(s=>(
+                <div key={s.l} style={{background:"#f9fafb",borderRadius:8,padding:20,textAlign:"center"}}>
+                  <div style={{fontSize:28,fontWeight:700,color:"#c9a84c"}}>{s.v}</div>
+                  <div style={{color:"#6b7280",fontSize:13,marginTop:4}}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {activeSection==="Fréquences globales" && (
+          <div>
+            <h3 style={{fontSize:18,fontWeight:600,marginBottom:16}}>Fréquences globales</h3>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+              {[{l:"Hebdomadaire",v:"12%"},{l:"Bi-mensuel",v:"28%"},{l:"Mensuel",v:"35%"},{l:"Trimestriel",v:"25%"}].map(f=>(
+                <div key={f.l} style={{background:"#f9fafb",borderRadius:8,padding:16,textAlign:"center"}}>
+                  <div style={{fontSize:24,fontWeight:700,color:"#c9a84c"}}>{f.v}</div>
+                  <div style={{color:"#6b7280",fontSize:12,marginTop:4}}>{f.l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {activeSection==="Nouveaux clients" && (
+          <div>
+            <h3 style={{fontSize:18,fontWeight:600,marginBottom:16}}>Nouveaux clients — Mai 2026</h3>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+              <div style={{background:"#f9fafb",borderRadius:8,padding:20}}>
+                <div style={{fontSize:28,fontWeight:700,color:"#c9a84c"}}>76</div>
+                <div style={{color:"#6b7280",fontSize:13,marginTop:4}}>Nouveaux clients dont 69 en ligne (91%)</div>
+              </div>
+              <div style={{background:"#f9fafb",borderRadius:8,padding:20}}>
+                <div style={{fontSize:28,fontWeight:700,color:"#4a9eff"}}>204</div>
+                <div style={{color:"#6b7280",fontSize:13,marginTop:4}}>RDV pris dont 179 en ligne (88%)</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN ────────────────────────────────────────────────────────────────────
+function AdminView() {
+  const [openSections, setOpenSections] = useState({agenda:true});
+  const [activePage, setActivePage] = useState("Gestion des prestations");
+  const toggle = (k) => setOpenSections(s=>({...s,[k]:!s[k]}));
+
+  const menuConfig = {
+    "Paramètres Agenda": ["Gestion des prestations","Gestion des agendas","Gestion de l'affichage des RDV","Contenu de marque"],
+    "Paramètres Caisse": ["Gestion des produits","Gestion des remises","Gestion de la fidélité","Gestion des cartes cadeaux","Gestion des cures","Gestion des moyens de paiement"],
+    "Paramètres Établissement": ["Coordonnées et message","Gestion des photos","Descriptif établissement","Notifications","Gestion horaires et délais","Gestion liste d'attente","Bouton Google","Bouton Facebook et Instagram"],
+    "Rendez-vous visio": ["Configuration"],
+    "Gestion Temps de Travail": [],
+    "Accès": ["Gestion des utilisateurs","Gestion des codes d'accès"],
+    "SMS & Emails": ["Consommation","Campagnes SMS","Notifications par mail"],
+    "Fiche clients": ["Gestion fiche clients"],
+    "Statistiques RDV": ["Indicateurs clés","Autres indicateurs","Prestations","Collaborateurs","RDV","RDV pas venus"],
+    "Taux d'occupation": ["Vue d'ensemble","Prestations","Collaborateurs"],
+    "Corbeille RDV": ["RDV annulés"],
+    "Mon site internet": [],
+    "Intégration": ["Intégration Chift"],
+    "Mes paiements & factures": ["Moyen de paiement","Liste des factures"],
+  };
+
+  return (
+    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+      {/* Sidebar */}
+      <div style={{width:230,background:"#0d1b2a",borderRight:"1px solid #1e3a5f",overflowY:"auto",flexShrink:0,fontSize:14}}>
+        {Object.entries(menuConfig).map(([section,items])=>(
+          <div key={section}>
+            <div onClick={()=>{ toggle(section); if(items.length===0) setActivePage(section); }} style={{padding:"10px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",color:activePage===section?"#c9a84c":"#e2e8f0",fontWeight:activePage===section?600:400}}>
+              <span>{section}</span>
+              {items.length>0 && <span style={{fontSize:9,color:"#94a3b8"}}>{openSections[section]?"▼":"▶"}</span>}
+            </div>
+            {openSections[section] && items.map(item=>(
+              <div key={item} onClick={()=>setActivePage(item)} style={{padding:"7px 16px 7px 28px",cursor:"pointer",color:activePage===item?"#c9a84c":"#94a3b8",fontSize:13,borderLeft:activePage===item?"3px solid #c9a84c":"3px solid transparent",background:activePage===item?"rgba(201,168,76,0.08)":"transparent"}}>
+                {item}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Main content */}
+      <div style={{flex:1,overflowY:"auto",background:"#fff"}}>
+        <AdminContent page={activePage} onNavigate={setActivePage} />
+      </div>
+    </div>
+  );
+}
+
+function AdminContent({page, onNavigate}) {
+  switch(page) {
+    case "Gestion des prestations": return <AdminPrestations />;
+    case "Gestion des agendas": return <AdminAgendas />;
+    case "Gestion de l'affichage des RDV": return <AdminAffichageRDV />;
+    case "Gestion des produits": return <AdminProduits />;
+    case "Gestion des remises": return <AdminRemises />;
+    case "Gestion des cartes cadeaux": return <AdminCartesCadeaux />;
+    case "Coordonnées et message": return <AdminCoordonnees />;
+    case "Gestion des photos": return <AdminPhotos />;
+    case "Descriptif établissement": return <AdminDescriptif />;
+    case "Notifications": return <AdminNotifications />;
+    case "Gestion horaires et délais": return <AdminHoraires />;
+    case "Gestion liste d'attente": return <AdminListeAttente />;
+    case "Bouton Google": return <AdminBoutonGoogle />;
+    case "Bouton Facebook et Instagram": return <AdminBoutonFacebook />;
+    case "Configuration": return <AdminVisio />;
+    case "Gestion des utilisateurs": return <AdminUtilisateurs />;
+    case "Consommation": return <AdminConsommation />;
+    case "Campagnes SMS": return <AdminCampagnesSMS />;
+    case "Notifications par mail": return <AdminNotifMail />;
+    case "Gestion fiche clients": return <AdminFicheClients />;
+    case "Indicateurs clés": return <AdminStatsCles />;
+    case "Autres indicateurs": return <AdminStatsAutres />;
+    case "Prestations": return <AdminStatsPrestations />;
+    case "Collaborateurs": return <AdminStatsCollaborateurs />;
+    case "RDV": return <AdminStatsRDV />;
+    case "RDV pas venus": return <AdminStatsRDVPasVenus />;
+    case "Vue d'ensemble": return <AdminTauxOccupation />;
+    case "RDV annulés": return <AdminCorbeille />;
+    case "Intégration Chift": return <AdminIntegration />;
+    case "Moyen de paiement": return <AdminMoyenPaiement />;
+    case "Liste des factures": return <AdminFactures />;
+    default: return <div style={{padding:24,color:"#6b7280"}}>Fonctionnalité à venir.</div>;
+  }
+}
+
+// ── Admin : Gestion des prestations
+function AdminPrestations() {
+  const [prestations, setPrestations] = useState(PRESTATIONS_ADMIN);
+  const [editModal, setEditModal] = useState(null);
+  const [showPalette, setShowPalette] = useState(false);
+  const [editData, setEditData] = useState({});
+
+  const openEdit = (p) => { setEditData({...p,couleur:p.couleur||"#f5c842",abrev:"",description:"",visibilite:"Prestation réservable",rdvDelai:1,annulDelai:6,frequence:15}); setEditModal(p); };
+
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
+        <Btn variant="link">⊕ Ajouter une catégorie de prestations</Btn>
+        <Btn variant="link">≡ Ordonner les catégories</Btn>
+        <Btn variant="link">👁 Afficher les prestations supprimées</Btn>
+        <Btn variant="link" style={{marginLeft:"auto"}}>€ Éditer les prix en masse</Btn>
+      </div>
+      {Object.entries(prestations).map(([cat,items])=>(
+        <div key={cat} style={{marginBottom:24}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f9fafb",padding:"10px 16px",borderRadius:6,marginBottom:2}}>
+            <span style={{fontWeight:600,fontSize:15}}>{cat}</span>
+            <div style={{display:"flex",gap:16}}>
+              <Btn variant="link" small>Ajouter une prestation</Btn>
+              <Btn variant="link" small>Ordonner</Btn>
+              <Btn variant="link" small>Dupliquer</Btn>
+              <Btn variant="link" small>Modifier</Btn>
+              <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
+            </div>
+          </div>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr style={{borderBottom:"1px solid #e5e7eb"}}>
+              <th style={{padding:"8px 12px",textAlign:"left",fontSize:12,color:"#6b7280",fontWeight:500}}>Prestation</th>
+              <th style={{padding:"8px 12px",textAlign:"left",fontSize:12,color:"#6b7280",fontWeight:500}}>Durée</th>
+              <th style={{padding:"8px 12px",textAlign:"left",fontSize:12,color:"#6b7280",fontWeight:500}}>Prix</th>
+              <th style={{padding:"8px 12px",textAlign:"left",fontSize:12,color:"#6b7280",fontWeight:500}}>Actions</th>
+            </tr></thead>
+            <tbody>
+              {items.map(p=>(
+                <tr key={p.id} style={{borderBottom:"1px solid #f3f4f6"}}>
+                  <td style={{padding:"12px 12px",fontSize:14,display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:4,height:20,background:p.couleur||"#c9a84c",borderRadius:2}} />
+                    {p.nom}
+                  </td>
+                  <td style={{padding:"12px 12px",fontSize:14,color:"#6b7280"}}>{p.duree} min</td>
+                  <td style={{padding:"12px 12px",fontSize:14,color:"#c9a84c",fontWeight:500}}>{fmt(p.prix)}</td>
+                  <td style={{padding:"12px 12px"}}>
+                    <span style={{color:"#6b7280",cursor:"pointer",fontSize:13,marginRight:12}}>Dupliquer</span>
+                    <span onClick={()=>openEdit(p)} style={{color:"#c9a84c",cursor:"pointer",fontSize:13,marginRight:12}}>Modifier</span>
+                    <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+
+      {editModal && (
+        <Modal title="Modifier une prestation" onClose={()=>setEditModal(null)} width="700px">
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>NOM</label>
+              <input value={editData.nom} onChange={e=>setEditData(d=>({...d,nom:e.target.value}))} style={{padding:"8px 12px",border:"2px solid #4a9eff",borderRadius:6,fontSize:14}} />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>ABRÉVIATION</label>
+              <input value={editData.abrev} onChange={e=>setEditData(d=>({...d,abrev:e.target.value}))} style={{padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"start"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:8}}>DESCRIPTION</label>
+              <textarea value={editData.description} onChange={e=>setEditData(d=>({...d,description:e.target.value}))} style={{padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,minHeight:80,resize:"vertical"}} />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"start"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:4}}>COULEUR</label>
+              <div>
+                <div onClick={()=>setShowPalette(p=>!p)} style={{width:36,height:36,background:editData.couleur,borderRadius:6,cursor:"pointer",border:"2px solid #e5e7eb"}} />
+                {showPalette && (
+                  <div style={{marginTop:8,padding:8,border:"1px solid #e5e7eb",borderRadius:8,display:"inline-block",background:"#fff"}}>
+                    <div style={{display:"flex",gap:4,marginBottom:8}}>
+                      {["Nouvelles couleurs","Anciennes couleurs"].map((t,i)=>(
+                        <span key={t} style={{fontSize:12,padding:"2px 8px",cursor:"pointer",borderBottom:i===0?"2px solid #4a9eff":"2px solid transparent",color:i===0?"#4a9eff":"#6b7280"}}>{t}</span>
+                      ))}
+                    </div>
+                    {PALETTE.map((row,ri)=>(
+                      <div key={ri} style={{display:"flex",gap:3,marginBottom:3}}>
+                        {row.map((c,ci)=>(
+                          <div key={ci} onClick={()=>{setEditData(d=>({...d,couleur:c}));setShowPalette(false);}} style={{width:28,height:28,background:c,borderRadius:4,cursor:"pointer",border:editData.couleur===c?"2px solid #111":"2px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12}}>
+                            {editData.couleur===c?"✓":""}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>PRIX TTC</label>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" value={editData.prix} onChange={e=>setEditData(d=>({...d,prix:Number(e.target.value)}))} style={{width:80,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <span>€</span>
+                <span style={{color:"#9ca3af",fontSize:13}}>Ou à partir de</span>
+                <input type="number" placeholder="" style={{width:70,padding:"8px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <span>€</span>
+                <span style={{color:"#9ca3af",fontSize:13}}>jusqu'à</span>
+                <input type="number" placeholder="" style={{width:70,padding:"8px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <span>€</span>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>DURÉE</label>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" value={editData.duree} onChange={e=>setEditData(d=>({...d,duree:Number(e.target.value)}))} style={{width:80,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <span style={{color:"#6b7280"}}>min.</span>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"start"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:4}}>COMPÉTENCES</label>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,background:"#f9fafb",padding:12,borderRadius:6}}>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14}}><input type="checkbox" defaultChecked style={{accentColor:"#4a9eff"}} /> Équipe</label>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14}}><input type="checkbox" defaultChecked style={{accentColor:"#4a9eff"}} /> Elnagar</label>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,gridColumn:"1/-1"}}><input type="checkbox" /> Plusieurs collaborateurs en même temps</label>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>VISIBILITÉ</label>
+              <RadioGroup options={["Prestation réservable","Affichée mais non réservable","Masquée sur le portail"]} value={editData.visibilite} onChange={v=>setEditData(d=>({...d,visibilite:v}))} />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>PRISE DE RDV EN LIGNE</label>
+              <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14}}>
+                <span>Jusqu'à</span>
+                <input type="number" value={editData.rdvDelai} onChange={e=>setEditData(d=>({...d,rdvDelai:Number(e.target.value)}))} style={{width:60,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <select style={{padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}}><option>heures</option><option>jours</option></select>
+                <span>avant le rendez-vous</span>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>ANNULATION</label>
+              <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14}}>
+                <span>Jusqu'à</span>
+                <input type="number" value={editData.annulDelai} onChange={e=>setEditData(d=>({...d,annulDelai:Number(e.target.value)}))} style={{width:60,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <select style={{padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}}><option>heures</option><option>jours</option></select>
+                <span>avant le rendez-vous</span>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>FRÉQUENCE DES CRÉNEAUX</label>
+              <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14}}>
+                <span>Proposer des RDV toutes les</span>
+                <input type="number" value={editData.frequence} onChange={e=>setEditData(d=>({...d,frequence:Number(e.target.value)}))} style={{width:60,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <span>minutes</span>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ── Admin : Gestion agendas
+function AdminAgendas() {
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",gap:16,marginBottom:20}}>
+        <Btn variant="link">≡ Ordonner les catégories</Btn>
+        <Btn variant="link">⇄ Synchroniser avec partenaires</Btn>
+        <label style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,fontSize:13,color:"#6b7280"}}>
+          <input type="checkbox" defaultChecked /> Sans préférence : attribuer aléatoirement
+        </label>
+      </div>
+      <div style={{border:"1px solid #e5e7eb",borderRadius:8}}>
+        <div style={{padding:"12px 16px",background:"#f9fafb",borderBottom:"1px solid #e5e7eb",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontWeight:600}}>Équipe</span>
+          <div style={{display:"flex",gap:16}}>
+            <Btn variant="link" small>Ajouter un agenda</Btn>
+            <Btn variant="link" small>Modifier</Btn>
+          </div>
+        </div>
+        <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderLeft:"3px solid #4a9eff"}}>
+          <span style={{fontSize:14}}>Elnagar</span>
+          <div style={{display:"flex",gap:16}}>
+            <span style={{color:"#6b7280",cursor:"pointer",fontSize:13}}>Dupliquer</span>
+            <span style={{color:"#c9a84c",cursor:"pointer",fontSize:13}}>Modifier</span>
+            <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Affichage RDV
+function AdminAffichageRDV() {
+  const [fields, setFields] = useState([
+    {nom:"Couleur dans le RDV",afficher:true,movable:false},
+    {nom:"Horaires",afficher:true,movable:true},
+    {nom:"Nom du client",afficher:true,movable:true},
+    {nom:"Prestation(s)",afficher:true,movable:true},
+    {nom:"Titre ou note",afficher:true,movable:true},
+  ]);
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontSize:18,fontWeight:600}}>Gestion de l'affichage des RDV</h2>
+        <Btn>Enregistrer</Btn>
+      </div>
+      <div style={{display:"flex",gap:24}}>
+        <div style={{flex:1}}>
+          <div style={{background:"#f9fafb",borderRadius:8,padding:20,marginBottom:16,fontSize:14,color:"#374151"}}>
+            <p style={{margin:"0 0 8px",fontWeight:600}}>Changer l'ordre et la visibilité des informations des rendez-vous</p>
+            <p style={{margin:0,color:"#6b7280",fontSize:13}}>Vous pouvez modifier la couleur au niveau du RDV, l'ordre des informations dans l'affichage des rendez-vous sur l'agenda et masquer certaines informations si besoin.</p>
+          </div>
+          {fields.map((f,i)=>(
+            <div key={f.nom} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",border:"1px solid #e5e7eb",borderRadius:6,marginBottom:8,background:"#fff"}}>
+              <span style={{fontSize:14,fontWeight:500}}>{f.nom}</span>
+              <div style={{display:"flex",alignItems:"center",gap:16}}>
+                <span style={{fontSize:13,color:"#6b7280"}}>Afficher :</span>
+                <label style={{display:"flex",alignItems:"center",gap:4,fontSize:13,cursor:"pointer"}}>
+                  <input type="radio" checked={f.afficher} onChange={()=>setFields(fs=>fs.map((x,j)=>j===i?{...x,afficher:true}:x))} /> Oui
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:4,fontSize:13,cursor:"pointer"}}>
+                  <input type="radio" checked={!f.afficher} onChange={()=>setFields(fs=>fs.map((x,j)=>j===i?{...x,afficher:false}:x))} /> Non
+                </label>
+                {f.movable && <span style={{color:"#9ca3af",cursor:"grab",fontSize:18}}>≡</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{width:200,flexShrink:0}}>
+          <div style={{fontSize:12,color:"#9ca3af",marginBottom:8}}>Aperçu</div>
+          <div style={{background:"#4a9eff",borderRadius:6,padding:"8px 10px",color:"#fff",fontSize:12}}>
+            <div style={{fontWeight:600}}>🔒 10:00 - 10:30 Nom client Prestation</div>
+            <div style={{opacity:0.8}}>Titre ou note</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Produits
+function AdminProduits() {
+  const [editModal, setEditModal] = useState(null);
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
+        <Btn variant="link">📄 Exporter</Btn>
+        <Btn variant="link">⊕ Ajouter une catégorie</Btn>
+        <Btn variant="link">≡ Ordonner les catégories</Btn>
+        <Btn variant="link">👁 Afficher les produits supprimés</Btn>
+        <input placeholder="Rechercher" style={{marginLeft:"auto",padding:"6px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13,width:180}} />
+      </div>
+      {Object.entries(PRODUITS_ADMIN).map(([cat,items])=>(
+        <div key={cat} style={{marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f9fafb",padding:"10px 16px",borderRadius:6,marginBottom:2}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{color:"#9ca3af",fontSize:18}}>▼</span>
+              <span style={{fontWeight:600,fontSize:15}}>{cat}</span>
+            </div>
+            <div style={{display:"flex",gap:16}}>
+              <Btn variant="link" small>Ajouter</Btn>
+              <Btn variant="link" small>Ordonner les produits</Btn>
+              <Btn variant="link" small>Modifier</Btn>
+              <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
+            </div>
+          </div>
+          {items.map(p=>(
+            <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid #f3f4f6",borderLeft:`3px solid ${p.couleur}`}}>
+              <span style={{fontSize:14}}><strong>{p.nom}</strong> <span style={{color:"#6b7280"}}>{p.prix},00 € - {p.stock} en stock</span></span>
+              <div>
+                <span onClick={()=>setEditModal(p)} style={{color:"#c9a84c",cursor:"pointer",fontSize:13,marginRight:16}}>Modifier</span>
+                <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+      {editModal && (
+        <Modal title="Modifier un produit" onClose={()=>setEditModal(null)} width="600px">
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>LIBELLÉ</label>
+              <input defaultValue={editModal.nom} style={{padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>COULEUR</label>
+              <div style={{width:36,height:36,background:editModal.couleur,borderRadius:6,border:"2px solid #e5e7eb",cursor:"pointer"}} />
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>PRIX DE VENTE TTC</label>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" defaultValue={editModal.prix} style={{width:80,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <span>€</span>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>STOCK</label>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <button style={{width:28,height:28,border:"1px solid #d1d5db",borderRadius:4,cursor:"pointer",background:"#fff",fontSize:16}}>-</button>
+                <span style={{fontWeight:600,fontSize:16,width:30,textAlign:"center"}}>{editModal.stock}</span>
+                <button style={{width:28,height:28,border:"1px solid #d1d5db",borderRadius:4,cursor:"pointer",background:"#fff",fontSize:16}}>+</button>
+                <Btn variant="link" small>État du stock</Btn>
+                <Btn variant="link" small>Historique</Btn>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"start"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:4}}>STOCK MIN/MAX</label>
+              <div style={{display:"flex",gap:12}}>
+                <div><div style={{fontSize:12,color:"#9ca3af",marginBottom:4}}>Stock minimum</div><input type="number" style={{width:80,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} /></div>
+                <div><div style={{fontSize:12,color:"#9ca3af",marginBottom:4}}>Stock maximum</div><input type="number" style={{width:80,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} /></div>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>TAUX DE TVA</label>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" defaultValue={20} style={{width:70,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <span>%</span>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>TYPE</label>
+              <RadioGroup options={["Technique","Revente","Mixte"]} value="Revente" onChange={()=>{}} />
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ── Admin : Remises
+function AdminRemises() {
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",gap:12,marginBottom:20}}>
+        <Btn variant="link">⊕ Ajouter une remise</Btn>
+        <Btn variant="link">≡ Ordonner les remises</Btn>
+      </div>
+      {REMISES_DATA.map(r=>(
+        <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid #f3f4f6",borderLeft:"3px solid #4a9eff"}}>
+          <span style={{fontSize:14,fontWeight:500}}>{r.nom} <span style={{color:"#6b7280",fontWeight:400}}>{r.type==="fixe"?`-${r.valeur} €`:`-${r.valeur} %`}</span></span>
+          <div style={{display:"flex",gap:16}}>
+            <span style={{color:"#6b7280",cursor:"pointer",fontSize:13}}>Dupliquer</span>
+            <span style={{color:"#c9a84c",cursor:"pointer",fontSize:13}}>Modifier</span>
+            <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Admin : Cartes cadeaux
+function AdminCartesCadeaux() {
+  const [type, setType] = useState("usage");
+  return (
+    <div style={{padding:24}}>
+      <div style={{background:"#f9fafb",borderRadius:8,padding:20,marginBottom:20}}>
+        <h3 style={{fontSize:16,fontWeight:600,marginBottom:8}}>Cartes cadeaux</h3>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:16}}>Afin d'activer la possibilité pour vos client d'offrir des cartes cadeaux ou des prestations en ligne, vous devez configurer votre compte Stripe vous permettant d'accepter des paiements en ligne.</p>
+        <Btn>Créer mon compte Planity Stripe Connect</Btn>
+      </div>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:20,marginBottom:20}}>
+        <h3 style={{fontSize:16,fontWeight:600,marginBottom:16}}>Cartes cadeaux</h3>
+        <p style={{fontSize:13,fontWeight:500,marginBottom:8}}>Choisissez le type de vos cartes cadeaux :</p>
+        <label style={{display:"flex",alignItems:"start",gap:8,fontSize:13,marginBottom:8,cursor:"pointer"}}>
+          <input type="radio" checked={type==="usage"} onChange={()=>setType("usage")} style={{marginTop:2}} />
+          Carte cadeau comptabilisée à l'usage (la TVA et le CA sont comptabilisés le ou les jours de l'utilisation de la carte cadeau)
+        </label>
+        <label style={{display:"flex",alignItems:"start",gap:8,fontSize:13,marginBottom:16,cursor:"pointer"}}>
+          <input type="radio" checked={type==="vente"} onChange={()=>setType("vente")} style={{marginTop:2}} />
+          Carte cadeau comptabilisée à la vente (la TVA et le CA sont comptabilisés le jour de la vente de la carte cadeau)
+        </label>
+        <Btn>Enregistrer</Btn>
+      </div>
+      <Btn variant="link">⊕ Ajouter une carte cadeau</Btn>
+      <div style={{marginTop:16,color:"#9ca3af",fontSize:13}}>Vous n'avez aucune carte cadeau. Pour commencer, veuillez en ajouter une.</div>
+    </div>
+  );
+}
+
+// ── Admin : Coordonnées
+function AdminCoordonnees() {
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontSize:18,fontWeight:600}}>Coordonnées et message</h2>
+        <Btn>Sauvegarder les modifications</Btn>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
+        <div>
+          <h3 style={{fontSize:16,fontWeight:600,marginBottom:16}}>Coordonnées</h3>
+          {[["Adresse","41, Rue Néricault Destouches"],["Code postal","37000"],["Ville","Tours"],["Numéro de téléphone","06 72 42 95 11"],["Numéro de Siret","99399517400014"]].map(([l,v])=>(
+            <div key={l} style={{marginBottom:12}}>
+              <label style={{display:"block",fontSize:13,color:"#6b7280",marginBottom:4}}>{l}</label>
+              <input defaultValue={v} style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+            </div>
+          ))}
+        </div>
+        <div style={{background:"#e5e7eb",borderRadius:8,overflow:"hidden",minHeight:260,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{textAlign:"center",color:"#9ca3af",padding:20}}>
+            <div style={{fontSize:24,marginBottom:8}}>📍</div>
+            <div style={{fontSize:13}}>41, Rue Néricault Destouches<br />37000 Tours</div>
+          </div>
+        </div>
+      </div>
+      <div style={{marginTop:20}}>
+        <h3 style={{fontSize:16,fontWeight:600,marginBottom:12}}>Visibilité et message</h3>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:12}}>Vous pouvez afficher un message personnalisé à vos clients qui prennent rendez-vous en ligne.</p>
+        <label style={{fontSize:13,color:"#374151"}}>Message sur ma page Planity (désactivé)</label>
+        <div style={{marginTop:8}}><RadioGroup options={["Oui","Non"]} value="Non" onChange={()=>{}} /></div>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Photos
+function AdminPhotos() {
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontSize:18,fontWeight:600}}>Gestion des photos</h2>
+        <Btn>Importer des photos</Btn>
+      </div>
+      <div style={{borderBottom:"2px solid #c9a84c",paddingBottom:8,marginBottom:16,display:"flex",gap:16}}>
+        <span style={{color:"#c9a84c",fontWeight:600,fontSize:14}}>Photos validées et en validation</span>
+      </div>
+      <div style={{background:"#f9fafb",borderRadius:6,padding:12,marginBottom:16,fontSize:13,color:"#6b7280"}}>
+        Vous pouvez ordonner, recadrer ou supprimer les photos de votre page Planity. <span style={{cursor:"pointer",textDecoration:"underline"}}>Télécharger mes photos</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
+        {[{n:1,label:"Salon bleu marine 1"},{n:2,label:"Salon bleu marine 2"},{n:3,label:"Logo ELNAGAR"}].map(p=>(
+          <div key={p.n} style={{border:"1px solid #e5e7eb",borderRadius:8,overflow:"hidden"}}>
+            <div style={{height:160,background:"linear-gradient(135deg,#0d1b2a,#1e3a5f)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(201,168,76,0.3)",display:"flex",alignItems:"center",justifyContent:"center",color:"#c9a84c",fontWeight:700,fontSize:18}}>{p.n}</div>
+            </div>
+            <div style={{padding:"8px 12px",display:"flex",gap:16}}>
+              <Btn variant="link" small>✂ Recadrer</Btn>
+              <Btn variant="link" small style={{color:"#ef4444"}}>🗑 Supprimer</Btn>
+              <span style={{marginLeft:"auto",color:"#9ca3af",cursor:"grab",fontSize:18}}>≡</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Descriptif
+function AdminDescriptif() {
+  const [desc, setDesc] = useState("Un espace dédié aux hommes, pensé pour prendre soin de vous et révéler le meilleur de vous-même.\nMeilleur Apprenti de France, je vous propose une expérience unique, basée sur la qualité du service, l'écoute et la personnalisation.\nChaque coupe et chaque taille de barbe est réalisée sur-mesure, en tenant compte de votre morphologie, de votre style et de la nature de vos cheveux, pour un résultat naturel, équilibré et valorisant.\nJe propose des prestations complètes : coupes hommes, dégradés, taille de barbe, soins, coloration, mèches, patine, lissage, défrisage, permanente, épilation à la cire, coupes enfants et coiffures pour événements.");
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontSize:18,fontWeight:600}}>Descriptif établissement</h2>
+        <Btn>Sauvegarder</Btn>
+      </div>
+      <div style={{background:"#f9fafb",borderRadius:8,padding:16,marginBottom:16,fontSize:13,color:"#6b7280"}}>
+        <strong>Modifier la section à-propos de ma page Planity</strong><br />
+        Vous pouvez modifier ci-dessous la section à-propos de votre page Planity. Ce texte sera soumis à validation.{" "}
+        <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}}>🏠 Voir ma page Planity</span>
+      </div>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:20,marginBottom:16}}>
+        <h3 style={{fontSize:16,fontWeight:600,marginBottom:12}}>À-propos</h3>
+        <textarea value={desc} onChange={e=>setDesc(e.target.value)} style={{width:"100%",padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,minHeight:140,resize:"vertical",boxSizing:"border-box"}} />
+        <div style={{textAlign:"right",fontSize:12,color:"#9ca3af",marginTop:4}}>{2500-desc.length} caractères restants</div>
+      </div>
+      {[{label:"Accès",add:"Ajouter vos accès",btn:"Ajouter un nouvel accès"},{label:"Formations",add:"Ajouter vos formations",btn:"Ajouter une nouvelle formation"},{label:"Expériences",add:"Ajouter vos expériences",btn:"Ajouter une nouvelle expérience"}].map(s=>(
+        <div key={s.label} style={{background:"#f9fafb",borderRadius:8,padding:"12px 16px",marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:14,fontWeight:600}}>{s.label} <span style={{color:"#9ca3af",fontWeight:400,fontSize:13}}>{s.add}</span></span>
+            <Btn variant="link" small>{s.btn}</Btn>
+          </div>
+          <div style={{color:"#9ca3af",fontSize:13,marginTop:8}}>Cette catégorie est vide</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Admin : Notifications
+function AdminNotifications() {
+  const [notifs, setNotifs] = useState({rdvNotif:false,rdvEmail:false,annulNotif:false,annulEmail:false,carteNotif:false,carteEmail:false});
+  return (
+    <div style={{padding:24}}>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:8}}>Notifications</h2>
+      <p style={{fontSize:13,color:"#6b7280",marginBottom:20}}>Pour être informé lorsqu'un rendez-vous est pris ou annulé en ligne par un client, ou qu'une carte cadeau est achetée : merci de préciser si vous souhaitez recevoir une notification, un email, ou les deux, et d'indiquer les adresses email concernées.</p>
+      {[{k:"rdv",label:"Nouveau RDV pris en ligne :"},{k:"annul",label:"RDV annulé en ligne :"},{k:"carte",label:"Achat de carte cadeau en ligne :"}].map(s=>(
+        <div key={s.k} style={{marginBottom:16}}>
+          <div style={{fontWeight:500,fontSize:14,marginBottom:6}}>{s.label}</div>
+          <div style={{display:"flex",gap:16}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}>
+              <input type="checkbox" checked={notifs[s.k+"Notif"]} onChange={e=>setNotifs(n=>({...n,[s.k+"Notif"]:e.target.checked}))} />
+              Être informé par notification
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}>
+              <input type="checkbox" checked={notifs[s.k+"Email"]} onChange={e=>setNotifs(n=>({...n,[s.k+"Email"]:e.target.checked}))} />
+              Être informé par email
+            </label>
+          </div>
+        </div>
+      ))}
+      <Btn style={{marginTop:8}}>Sauvegarder les réglages</Btn>
+      <div style={{marginTop:20,background:"#f9fafb",borderRadius:8,padding:16,fontSize:13,color:"#6b7280"}}>
+        Pour recevoir un email dès qu'un rendez-vous est pris en ligne, annulé ou qu'une carte cadeau est acheté par un utilisateur : merci d'indiquer la ou les adresses emails qui les recevront.
+        <div style={{marginTop:12}}><Btn variant="link">⊕ Ajouter une adresse email</Btn></div>
+        <div style={{marginTop:8,color:"#9ca3af"}}>Vous n'avez aucune adresse email.</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Horaires
+function AdminHoraires() {
+  const [onglet, setOnglet] = useState("Horaires de l'établissement");
+  const onglets = ["Horaires de l'établissement","Horaires exceptionnels de l'établissement","Horaires affichés dans l'agenda","Délais RDV en ligne","Jours fériés"];
+  const joursOuverts = {Lu:true,Ma:true,Me:true,Je:true,Ve:true,Sa:true,Di:false};
+  return (
+    <div style={{padding:0}}>
+      <div style={{borderBottom:"1px solid #e5e7eb",padding:"0 24px",display:"flex",gap:0,overflowX:"auto"}}>
+        {onglets.map(o=>(
+          <div key={o} onClick={()=>setOnglet(o)} style={{padding:"12px 16px",cursor:"pointer",borderBottom:onglet===o?"2px solid #c9a84c":"2px solid transparent",color:onglet===o?"#c9a84c":"#6b7280",fontSize:13,whiteSpace:"nowrap",fontWeight:onglet===o?600:400}}>{o}</div>
+        ))}
+      </div>
+      <div style={{padding:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <h2 style={{fontSize:16,fontWeight:600}}>Gestion des horaires et de la prise de RDV en ligne</h2>
+          <Btn>Sauvegarder les modifications</Btn>
+        </div>
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:20,marginBottom:20}}>
+          <h3 style={{fontSize:15,fontWeight:600,marginBottom:12}}>Activation</h3>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+            <span style={{fontSize:14,width:160}}>Prise de RDV en ligne</span>
+            <RadioGroup options={["Ouverte","Fermée"]} value="Ouverte" onChange={()=>{}} />
+          </div>
+          <p style={{fontSize:13,color:"#6b7280",margin:0}}>Les clients peuvent prendre leur RDV en ligne.</p>
+        </div>
+        <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:20}}>
+          <h3 style={{fontSize:15,fontWeight:600,marginBottom:12}}>Jours d'ouverture</h3>
+          <div style={{display:"flex",gap:6,marginBottom:20}}>
+            {Object.entries(joursOuverts).map(([j,open])=>(
+              <button key={j} style={{width:36,height:36,borderRadius:6,border:"none",cursor:"pointer",background:open?"#c9a84c":"#e5e7eb",color:open?"#fff":"#6b7280",fontWeight:600,fontSize:12}}>
+                {j}
+              </button>
+            ))}
+          </div>
+          {Object.entries(HORAIRES_DATA).map(([jour,plages])=>(
+            plages.length>0 && (
+              <div key={jour} style={{display:"flex",gap:12,alignItems:"center",marginBottom:12}}>
+                <span style={{width:90,fontSize:14,fontWeight:500}}>{jour}</span>
+                <div style={{display:"flex",flex:1,gap:8,flexWrap:"wrap"}}>
+                  {plages.map((p,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:6}}>
+                      <input defaultValue={p.debut} style={{width:70,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13}} />
+                      <span>-</span>
+                      <input defaultValue={p.fin} style={{width:70,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13}} />
+                      {plages.length>1 && <button style={{background:"none",border:"none",cursor:"pointer",color:"#9ca3af",fontSize:16}}>⊗</button>}
+                    </div>
+                  ))}
+                  <Btn variant="link" small>Ajouter une plage d'ouverture</Btn>
+                </div>
+              </div>
+            )
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Liste d'attente
+function AdminListeAttente() {
+  const [actif, setActif] = useState(true);
+  return (
+    <div style={{padding:24}}>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:20}}>Gestion liste d'attente</h2>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:24,maxWidth:500}}>
+        <h3 style={{fontSize:15,fontWeight:600,marginBottom:16}}>Activation de la liste d'attente</h3>
+        <p style={{fontSize:14,color:"#374151",marginBottom:12}}>Souhaitez-vous activer la liste d'attente ?</p>
+        <RadioGroup options={["Oui","Non"]} value={actif?"Oui":"Non"} onChange={v=>setActif(v==="Oui")} />
+        <button style={{marginTop:20,width:"100%",background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"12px",fontSize:14,cursor:"pointer"}}>Enregistrer</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Bouton Google
+function AdminBoutonGoogle() {
+  const [afficher, setAfficher] = useState(true);
+  return (
+    <div style={{padding:24}}>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:24,maxWidth:700}}>
+        <h3 style={{fontSize:16,fontWeight:600,marginBottom:8}}>Bouton "Réserver en ligne" sur Google My Business et Google Maps</h3>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:16}}>Planity est partenaire de Google et vous permet d'ajouter un bouton "Réserver en ligne" sur votre page Google My Business et sur Google Maps. <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}}>ℹ Voir plus d'informations</span></p>
+        <RadioGroup options={["Afficher le bouton","Masquer le bouton"]} value={afficher?"Afficher le bouton":"Masquer le bouton"} onChange={v=>setAfficher(v==="Afficher le bouton")} />
+        <button style={{marginTop:20,width:"100%",background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"12px",fontSize:14,cursor:"pointer"}}>Sauvegarder</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Bouton Facebook/Instagram
+function AdminBoutonFacebook() {
+  return (
+    <div style={{padding:24}}>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:24,maxWidth:600}}>
+        <h3 style={{fontSize:16,fontWeight:600,marginBottom:8}}>Ajouter un bouton "Réserver" à ma page Facebook et Instagram</h3>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:4}}>Cela vous permettra de créer un bouton "Réserver" sur Facebook et Instagram qui redirige vers votre page Planity.</p>
+        <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline",fontSize:13}}>ℹ Voir le centre d'aide</span>
+        <button style={{marginTop:20,display:"block",background:"#4a9eff",color:"#fff",border:"none",borderRadius:6,padding:"10px 24px",fontSize:14,cursor:"pointer"}}>Lier à Facebook et Instagram</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Visio
+function AdminVisio() {
+  return (
+    <div style={{padding:24}}>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:24,maxWidth:600}}>
+        <h3 style={{fontSize:16,fontWeight:600,marginBottom:8}}>Configurer votre service de Rendez-vous visio</h3>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:20}}>Vous pouvez proposer des rendez-vous visio à vos clients, en utilisant un outil externe comme Google Meet, Zoom ou Microsoft Teams.</p>
+        <h4 style={{fontSize:14,fontWeight:600,marginBottom:12}}>Activation du rendez-vous visio</h4>
+        <RadioGroup options={["Oui","Non"]} value="Non" onChange={()=>{}} />
+        <div style={{marginTop:12,fontSize:13,color:"#6b7280"}}>Pour activer les rdv visio vous devez au préalable activer le paiement en ligne. <span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}}>Activer le paiement en ligne</span></div>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Utilisateurs
+function AdminUtilisateurs() {
+  return (
+    <div style={{padding:24}}>
+      <div style={{background:"#f9fafb",borderRadius:8,padding:20,marginBottom:16}}>
+        <h3 style={{fontSize:15,fontWeight:600,marginBottom:8}}>Nouvelle fonctionnalité à venir</h3>
+        <p style={{fontSize:13,color:"#6b7280"}}>Vous pourrez bientôt gérer vos utilisateurs directement depuis cet écran : vous aurez la possibilité de créer, modifier, supprimer ou déconnecter vos collaborateurs en toute autonomie.</p>
+      </div>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:20,marginBottom:16}}>
+        <h3 style={{fontSize:15,fontWeight:600,marginBottom:8}}>Protégez l'accès à cette page dès maintenant</h3>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:12}}>Nous vous recommandons de mettre en place un code d'accès avant le 01/05/2026 afin de garder le contrôle sur les accès à votre établissement.</p>
+      </div>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:20}}>
+        <h3 style={{fontSize:15,fontWeight:600,marginBottom:8}}>Comment créer un code d'accès ?</h3>
+        <ul style={{fontSize:13,color:"#6b7280",marginBottom:16,paddingLeft:20}}>
+          <li>Rendez-vous dans Admin &gt; Accès &gt; Gestion des codes d'accès</li>
+          <li>Cliquez sur le bouton Créer un code d'accès</li>
+          <li>Choisissez un code et sélectionnez les écrans que vous souhaitez protéger</li>
+        </ul>
+        <button style={{width:"100%",background:"#4a9eff",color:"#fff",border:"none",borderRadius:6,padding:"12px",fontSize:14,cursor:"pointer"}}>Accéder à la gestion des codes d'accès</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Consommation SMS
+function AdminConsommation() {
+  const jours = Array.from({length:31},(_,i)=>({j:`${String(i+1).padStart(2,"0")}/05`,rappels:i===0?10:0,tickets:0,campagnes:0,auto:0}));
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#6b7280"}}>‹</button>
+          <span style={{fontWeight:600,fontSize:15}}>Mai 2026</span>
+          <button style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#6b7280"}}>›</button>
+        </div>
+      </div>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr style={{background:"#f9fafb",borderBottom:"2px solid #e5e7eb"}}>
+          {["Jour","Rappels SMS","Tickets SMS","Campagnes SMS","Campagnes SMS automatisées","Total"].map(h=>(
+            <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:12,fontWeight:600,color:"#374151"}}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {jours.map(j=>(
+            <tr key={j.j} style={{borderBottom:"1px solid #f3f4f6"}}>
+              <td style={{padding:"10px 12px",fontSize:13}}>{j.j.replace("/05",j.j.startsWith("01")||j.j.startsWith("02")||j.j.startsWith("03")?" mai":"")}</td>
+              <td style={{padding:"10px 12px",fontSize:13,color:j.rappels>0?"#374151":"#9ca3af"}}>{j.rappels}</td>
+              <td style={{padding:"10px 12px",fontSize:13,color:"#9ca3af"}}>0</td>
+              <td style={{padding:"10px 12px",fontSize:13,color:"#9ca3af"}}>0</td>
+              <td style={{padding:"10px 12px",fontSize:13,color:"#9ca3af"}}>0</td>
+              <td style={{padding:"10px 12px",fontSize:13,color:j.rappels>0?"#374151":"#9ca3af"}}>{j.rappels}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Admin : Campagnes SMS
+function AdminCampagnesSMS() {
+  const [onglet, setOnglet] = useState("ponctuelles");
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontSize:18,fontWeight:600}}>Campagnes SMS</h2>
+        <Btn>Créer une campagne</Btn>
+      </div>
+      <div style={{borderBottom:"2px solid #e5e7eb",marginBottom:20,display:"flex",gap:0}}>
+        {[{k:"ponctuelles",l:"Campagnes ponctuelles"},{k:"auto",l:"Campagnes automatisées"}].map(o=>(
+          <div key={o.k} onClick={()=>setOnglet(o.k)} style={{padding:"10px 16px",cursor:"pointer",borderBottom:onglet===o.k?"2px solid #c9a84c":"2px solid transparent",color:onglet===o.k?"#c9a84c":"#6b7280",fontSize:14,fontWeight:onglet===o.k?600:400}}>
+            {o.l}
+          </div>
+        ))}
+      </div>
+      <div style={{background:"#f9fafb",borderRadius:8,padding:16,marginBottom:16,fontSize:13,color:"#6b7280"}}>
+        Avec Planity, vous pouvez créer des campagnes de SMS auprès de vos clients, pour leur faire part de votre activité, de vos nouvelles offres ou encore de vos promotions.
+      </div>
+      <div style={{textAlign:"center",color:"#9ca3af",fontSize:14,padding:32}}>Vous n'avez pas encore fait de campagne SMS</div>
+    </div>
+  );
+}
+
+// ── Admin : Notifications par mail
+function AdminNotifMail() {
+  const [actif, setActif] = useState(true);
+  return (
+    <div style={{padding:24}}>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:24,maxWidth:700}}>
+        <h3 style={{fontSize:16,fontWeight:600,marginBottom:8}}>Notifications par mail</h3>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:16}}>Pour envoyer un email de confirmation à votre client lors de l'ajout ou de la suppression manuel(le) d'un rendez-vous à votre agenda, activez les notifications par email :</p>
+        <div style={{fontWeight:500,fontSize:13,marginBottom:8}}>ACTIVATION</div>
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,cursor:"pointer"}}>
+          <input type="checkbox" checked={actif} onChange={e=>setActif(e.target.checked)} style={{accentColor:"#4a9eff"}} />
+          Activer la confirmation par email des rdv ajoutés ou supprimés manuellement dans l'agenda Planity Pro
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Gestion fiche clients
+function AdminFicheClients() {
+  return (
+    <div style={{padding:24}}>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:8}}>Gestion fiche clients</h2>
+      <p style={{fontSize:13,color:"#6b7280",marginBottom:4}}>Vous pouvez afficher des champs supplémentaires comme le genre, la date de naissance et le code postal, et déterminer si le champ est obligatoire ou non.</p>
+      <p style={{fontSize:13,fontWeight:600,color:"#374151",marginBottom:20}}>Note : Si les champs ont été rendus obligatoires par l'administrateur, vous ne pourrez pas modifier cette option.</p>
+      {[
+        {label:"Genre",options:["Afficher","Saisie obligatoire"]},
+        {label:"Date de naissance",options:["Afficher","Ne pas demander l'année","Saisie obligatoire"]},
+        {label:"Adresse postale",options:["Afficher","Demander le code postal uniquement","Saisie obligatoire"]},
+      ].map(field=>(
+        <div key={field.label} style={{borderBottom:"1px solid #e5e7eb",padding:"20px 0"}}>
+          <h3 style={{fontSize:15,fontWeight:600,marginBottom:12}}>{field.label}</h3>
+          <div style={{display:"flex",gap:32,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{fontSize:13,color:"#6b7280",width:60}}>Afficher :</span>
+              <RadioGroup options={["Oui","Non"]} value="Oui" onChange={()=>{}} />
+            </div>
+            {field.options.includes("Ne pas demander l'année") && (
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}>
+                <input type="checkbox" /> Ne pas demander l'année
+              </label>
+            )}
+            {field.options.includes("Demander le code postal uniquement") && (
+              <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}>
+                <input type="checkbox" /> Demander le code postal uniquement
+              </label>
+            )}
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{fontSize:13,color:"#6b7280",width:120}}>Saisie obligatoire :</span>
+              <RadioGroup options={["Oui","Non"]} value="Non" onChange={()=>{}} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Admin : Stats clés
+function AdminStatsCles() {
+  const [periode, setPeriode] = useState("Mai 2026");
+  const kpis = [{label:"Nombre de RDV en ligne",val:"31"},{label:"Nombre de RDV",val:"42"},{label:"Taux en ligne",val:"73.8 %"},{label:"Nouveaux clients en ligne",val:"0"},{label:"Nouveaux clients en salon",val:"2"}];
+  const rdvData = [4,8,2,0,5,5,2,1,1,2,0,1,0,5,5,0,0,0,0,1,0,2,0,0,0,0,0,0,0,0,0];
+  const ligneData = [5,8,2,0,5,5,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+  const maxVal = 8;
+  return (
+    <div style={{padding:24}}>
+      <StatsTabs active="Indicateurs clés" />
+      <div style={{display:"flex",gap:12,marginBottom:20,alignItems:"center"}}>
+        <Btn variant="link">📄 Exporter</Btn>
+        <Btn variant="link">🖨 Imprimer</Btn>
+        <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13}}>
+            <input type="checkbox" /> Comparer à
+          </label>
+          <button style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#6b7280"}}>‹</button>
+          <span style={{fontWeight:600,fontSize:14,padding:"4px 12px",border:"1px solid #d1d5db",borderRadius:6}}>{periode}</span>
+          <button style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#6b7280"}}>›</button>
+          <select style={{padding:"6px 10px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13}}><option>Mois</option></select>
+          <Btn variant="secondary" small>Aujourd'hui</Btn>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:12,marginBottom:24,flexWrap:"wrap"}}>
+        {kpis.map(k=>(
+          <div key={k.label} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:"16px 20px",flex:1,minWidth:140}}>
+            <div style={{fontSize:12,color:"#6b7280",marginBottom:4}}>{k.label}</div>
+            <div style={{fontSize:24,fontWeight:700,color:"#c9a84c"}}>{k.val}</div>
+            {(k.label.includes("clients")) && <div style={{fontSize:12,color:"#c9a84c",cursor:"pointer",textDecoration:"underline",marginTop:4}}>Voir la liste</div>}
+          </div>
+        ))}
+      </div>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:20}}>
+        <h3 style={{fontSize:15,fontWeight:600,marginBottom:16}}>Rendez-vous pris</h3>
+        <div style={{position:"relative",height:160}}>
+          <svg width="100%" height="160" viewBox={`0 0 ${rdvData.length*40} 160`} preserveAspectRatio="none">
+            {[0,2,4,6,8].map(v=>(
+              <line key={v} x1={0} y1={160-v/maxVal*140} x2={rdvData.length*40} y2={160-v/maxVal*140} stroke="#e5e7eb" strokeWidth={1} />
+            ))}
+            <polyline points={rdvData.map((v,i)=>`${i*40+20},${160-v/maxVal*140}`).join(" ")} fill="none" stroke="#0d4a2a" strokeWidth={2} />
+            <polyline points={ligneData.map((v,i)=>`${i*40+20},${160-v/maxVal*140}`).join(" ")} fill="none" stroke="#5cb85c" strokeWidth={2} />
+            {rdvData.map((v,i)=><circle key={i} cx={i*40+20} cy={160-v/maxVal*140} r={4} fill="#0d4a2a" />)}
+            {ligneData.map((v,i)=><circle key={i} cx={i*40+20} cy={160-v/maxVal*140} r={4} fill="#5cb85c" />)}
+          </svg>
+        </div>
+        <div style={{display:"flex",gap:16,marginTop:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12}}><div style={{width:20,height:3,background:"#0d4a2a"}} />Pris en salon</div>
+          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12}}><div style={{width:20,height:3,background:"#5cb85c"}} />Pris en ligne</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Stats autres
+function AdminStatsAutres() {
+  return (
+    <div style={{padding:24}}>
+      <StatsTabs active="Autres indicateurs" />
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,marginTop:20}}>
+        {[
+          {title:"RDV pris",data:[{label:"Pris en salon",pct:26.2,color:"#267826"},{label:"Pris en ligne",pct:73.8,color:"#5cb85c"}]},
+          {title:"Nombre de prestations en salon par collaborateur",data:[{label:"Elnagar",pct:100,color:"#4a9eff"}]},
+          {title:"Nombre de prestations en ligne par collaborateur",data:[{label:"Elnagar",pct:100,color:"#4a9eff"}]},
+        ].map(card=>(
+          <div key={card.title} style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:20}}>
+            <div style={{fontSize:13,fontWeight:500,marginBottom:16,color:"#374151"}}>{card.title}</div>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:12}}>
+              <svg width={120} height={120} viewBox="0 0 120 120">
+                <circle cx={60} cy={60} r={48} fill="none" stroke="#e5e7eb" strokeWidth={16} />
+                {card.data.map((d,i)=>{
+                  const offset = card.data.slice(0,i).reduce((s,x)=>s+x.pct,0)/100*2*Math.PI*48;
+                  const len = d.pct/100*2*Math.PI*48;
+                  return <circle key={i} cx={60} cy={60} r={48} fill="none" stroke={d.color} strokeWidth={16} strokeDasharray={`${len} 999`} strokeDashoffset={-offset} style={{transform:"rotate(-90deg)",transformOrigin:"60px 60px"}} />;
+                })}
+              </svg>
+            </div>
+            {card.data.map(d=>(
+              <div key={d.label} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                <div style={{width:16,height:3,background:d.color}} />
+                <span style={{fontSize:12,color:"#374151"}}>{d.label}</span>
+                <strong style={{marginLeft:"auto",fontSize:12}}>{d.pct}%</strong>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              <button style={{flex:1,padding:"4px 8px",border:"1px solid #e5e7eb",borderRadius:4,cursor:"pointer",background:"#f9fafb",fontSize:12}}>Graphe</button>
+              <button style={{flex:1,padding:"4px 8px",border:"1px solid #e5e7eb",borderRadius:4,cursor:"pointer",background:"#fff",fontSize:12}}>Tableau</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Stats prestations
+function AdminStatsPrestations() {
+  return (
+    <div style={{padding:24}}>
+      <StatsTabs active="Prestations" />
+      <StatsToolbar />
+      <table style={{width:"100%",borderCollapse:"collapse",marginTop:16}}>
+        <thead><tr style={{background:"#f9fafb",borderBottom:"2px solid #e5e7eb"}}>
+          {["PRESTATION","TOTAL PRESTATIONS","PRIS EN SALON","PRIS EN LIGNE","TAUX EN LIGNE","TOTAL DES RDV*"].map(h=>(
+            <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:"#6b7280"}}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {STATS_PRESTATIONS.map((r,i)=>(
+            <tr key={i} style={{borderBottom:"1px solid #f3f4f6",background:r.cat?"#f9fafb":"#fff",fontWeight:r.cat?600:400}}>
+              <td style={{padding:"10px 12px",fontSize:14,paddingLeft:r.cat?12:24}}>{r.cat||r.nom}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.total}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.salon}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.ligne}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.taux}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.ca}</td>
+            </tr>
+          ))}
+          <tr style={{borderTop:"2px solid #374151",fontWeight:700}}>
+            <td style={{padding:"10px 12px",fontSize:14}}>TOTAL</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>47</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>12</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>35</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>74.5 %</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>1 538,00 €</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Admin : Stats collaborateurs
+function AdminStatsCollaborateurs() {
+  return (
+    <div style={{padding:24}}>
+      <StatsTabs active="Collaborateurs" />
+      <StatsToolbar />
+      <table style={{width:"100%",borderCollapse:"collapse",marginTop:16}}>
+        <thead><tr style={{background:"#f9fafb",borderBottom:"2px solid #e5e7eb"}}>
+          {["COLLABORATEUR","TOTAL PRESTATIONS","PRIS EN SALON","PRIS EN LIGNE","TAUX EN LIGNE","CHOISI EN SALON","CHOISI EN LIGNE","TOTAL DES RDV*"].map(h=>(
+            <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:"#6b7280"}}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {[{c:"Collaborateurs",bold:true},{c:"Elnagar",bold:false}].map((r,i)=>(
+            <tr key={i} style={{borderBottom:"1px solid #f3f4f6",fontWeight:r.bold?700:400}}>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.c}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>47</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>12</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>35</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>74.5 %</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>1</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>35</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>1 538,00 €</td>
+            </tr>
+          ))}
+          <tr style={{borderTop:"2px solid #374151",fontWeight:700}}>
+            <td style={{padding:"10px 12px",fontSize:14}} colSpan={1}>TOTAL</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>47</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>12</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>35</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>74.5 %</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>1</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>35</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>1 538,00 €</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style={{fontSize:12,color:"#9ca3af",marginTop:12}}>Attention ceci n'est pas le chiffre d'affaire comptable, il s'agit de la somme des prix indiqués dans l'agenda. A noter: les statistiques sont calculées toutes les nuits.</p>
+    </div>
+  );
+}
+
+// ── Admin : Stats RDV
+function AdminStatsRDV() {
+  const data = [{d:"01/05",t:9,s:4,l:5,tx:"55.56%"},{d:"02/05",t:10,s:2,l:8,tx:"80%"},{d:"03/05",t:0,s:0,l:0,tx:"0%"},{d:"04/05",t:5,s:0,l:5,tx:"100%"},{d:"05/05",t:7,s:2,l:5,tx:"71.43%"},{d:"06/05",t:1,s:0,l:1,tx:"100%"},{d:"07/05",t:3,s:1,l:2,tx:"66.67%"},{d:"08/05",t:1,s:0,l:1,tx:"100%"},{d:"09/05",t:2,s:1,l:1,tx:"50%"},{d:"10/05",t:0,s:0,l:0,tx:"0%"},{d:"11/05",t:0,s:0,l:0,tx:"0%"},{d:"12/05",t:1,s:0,l:1,tx:"100%"},{d:"13/05",t:0,s:0,l:0,tx:"0%"}];
+  return (
+    <div style={{padding:24}}>
+      <StatsTabs active="RDV" />
+      <StatsToolbar />
+      <table style={{width:"100%",borderCollapse:"collapse",marginTop:16}}>
+        <thead><tr style={{background:"#f9fafb",borderBottom:"2px solid #e5e7eb"}}>
+          {["DATE","TOTAL PRESTATIONS","PRIS EN SALON","PRIS EN LIGNE","TAUX EN LIGNE"].map(h=>(
+            <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:"#6b7280"}}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {data.map(r=>(
+            <tr key={r.d} style={{borderBottom:"1px solid #f3f4f6"}}>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.d}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.t}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.s}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.l}</td>
+              <td style={{padding:"10px 12px",fontSize:14}}>{r.tx}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Admin : Stats RDV pas venus
+function AdminStatsRDVPasVenus() {
+  return (
+    <div style={{padding:24}}>
+      <StatsTabs active="RDV pas venus" />
+      <StatsToolbar />
+      <table style={{width:"100%",borderCollapse:"collapse",marginTop:16}}>
+        <thead><tr style={{background:"#f9fafb",borderBottom:"2px solid #e5e7eb"}}>
+          {["DATE","TOTAL PRESTATIONS","PRIS EN SALON","PRIS EN LIGNE","TAUX EN LIGNE"].map(h=>(
+            <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:600,color:"#6b7280"}}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          <tr style={{borderBottom:"1px solid #f3f4f6",fontWeight:700}}>
+            <td style={{padding:"10px 12px",fontSize:14}}>TOTAL</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>0</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>0</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>0</td>
+            <td style={{padding:"10px 12px",fontSize:14}}>0%</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style={{fontSize:12,color:"#9ca3af",marginTop:12}}>A noter: les statistiques sont calculées toutes les nuits. Par conséquent, les actions effectuées aujourd'hui seront prises en compte le lendemain.</p>
+    </div>
+  );
+}
+
+// ── Admin : Taux d'occupation
+function AdminTauxOccupation() {
+  const onglets = ["Vue d'ensemble","Prestations","Collaborateurs"];
+  const [onglet, setOnglet] = useState("Vue d'ensemble");
+  const cols = ["LUN","MAR","MER","JEU","VEN","SAM","DIM"];
+  const colsKeys = ["Lu","Ma","Me","Je","Ve","Sa","Di"];
+  const getColor = (v) => {
+    if(v===0) return "#f3f4f6";
+    if(v<20) return "#d1fae5";
+    if(v<40) return "#a7f3d0";
+    if(v<60) return "#6ee7b7";
+    return "#4caf50";
+  };
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",gap:0,marginBottom:20,borderBottom:"1px solid #e5e7eb"}}>
+        {onglets.map(o=>(
+          <div key={o} onClick={()=>setOnglet(o)} style={{padding:"10px 16px",cursor:"pointer",borderBottom:onglet===o?"2px solid #c9a84c":"2px solid transparent",color:onglet===o?"#c9a84c":"#6b7280",fontSize:13,fontWeight:onglet===o?600:400}}>{o}</div>
+        ))}
+      </div>
+      <StatsToolbar />
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <p style={{fontSize:13,fontWeight:500,color:"#374151"}}>Moyenne des taux d'occupation* par jour de la semaine et par tranche horaire.</p>
+        <div style={{display:"flex",gap:8}}>
+          <select style={{padding:"6px 10px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13}}><option>Voir le détail par collaborateur</option></select>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}><input type="checkbox" />Toutes les 1h</label>
+        </div>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{borderCollapse:"collapse",minWidth:600}}>
+          <thead><tr>
+            <th style={{width:120,padding:"8px 12px",fontSize:12,color:"#6b7280",fontWeight:500,textAlign:"left"}}></th>
+            {cols.map(c=><th key={c} style={{padding:"8px 12px",fontSize:12,fontWeight:600,color:"#374151",minWidth:80}}>{c}</th>)}
+          </tr></thead>
+          <tbody>
+            {Object.entries(TAUX_OCCUPATION).map(([tranche,vals])=>(
+              <tr key={tranche}>
+                <td style={{padding:"6px 12px",fontSize:12,color:"#6b7280",whiteSpace:"nowrap"}}>{tranche}</td>
+                {colsKeys.map(c=>(
+                  <td key={c} style={{padding:4}}>
+                    <div style={{background:getColor(vals[c]),borderRadius:4,padding:"6px 8px",textAlign:"center",fontSize:12,fontWeight:vals[c]>0?600:400,color:vals[c]>50?"#fff":"#374151",minWidth:64}}>
+                      {vals[c]}%
+                    </div>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Corbeille RDV
+function AdminCorbeille() {
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontSize:18,fontWeight:600}}>Rendez-vous annulés dans les 30 derniers jours</h2>
+        <button style={{background:"none",border:"1px solid #d1d5db",borderRadius:6,padding:"6px 16px",cursor:"pointer",fontSize:13,color:"#374151"}}>Vider la corbeille</button>
+      </div>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr style={{background:"#f9fafb",borderBottom:"2px solid #e5e7eb"}}>
+          {["RDV avec","Date du RDV","Client(e)","Pris par Internet","Création","Annulation","Annulé par le client","Actions"].map(h=>(
+            <th key={h} style={{padding:"10px 8px",textAlign:"left",fontSize:11,fontWeight:600,color:"#6b7280"}}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {CORBEILLE_RDV.map(r=>(
+            <tr key={r.id} style={{borderBottom:"1px solid #f3f4f6"}}>
+              <td style={{padding:"10px 8px",fontSize:13}}>{r.agenda}</td>
+              <td style={{padding:"10px 8px",fontSize:13}}>{r.date}</td>
+              <td style={{padding:"10px 8px",fontSize:13,fontWeight:r.client?500:400,color:r.client?"#374151":"#9ca3af"}}>{r.client||"-"}</td>
+              <td style={{padding:"10px 8px",fontSize:13,textAlign:"center"}}>{r.internet?"✓":""}</td>
+              <td style={{padding:"10px 8px",fontSize:13}}>{r.creation}</td>
+              <td style={{padding:"10px 8px",fontSize:13}}>{r.annulation}</td>
+              <td style={{padding:"10px 8px",fontSize:13,textAlign:"center"}}>{r.internet?"✓":""}</td>
+              <td style={{padding:"10px 8px"}}><span style={{color:"#c9a84c",cursor:"pointer",fontSize:13}}>Restaurer</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Admin : Intégration Chift
+function AdminIntegration() {
+  const [actif, setActif] = useState(true);
+  return (
+    <div style={{padding:24}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <h2 style={{fontSize:18,fontWeight:600}}>Intégration</h2>
+        <Btn>Sauvegarder</Btn>
+      </div>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:24,maxWidth:700}}>
+        <h3 style={{fontSize:16,fontWeight:600,marginBottom:8}}>Intégration Chift</h3>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:4}}>L'intégration via Chift vous permet de connecter votre compte Planity à votre logiciel de comptabilité.</p>
+        <p style={{fontSize:13,color:"#6b7280",marginBottom:16}}>Vous devez activer l'intégration, récupérer la clé fournie par Planity puis la saisir dans votre logiciel.</p>
+        <h4 style={{fontSize:14,fontWeight:600,marginBottom:8}}>Activer l'intégration</h4>
+        <RadioGroup options={["Oui","Non"]} value={actif?"Oui":"Non"} onChange={v=>setActif(v==="Oui")} />
+        {actif && (
+          <div style={{marginTop:16,display:"flex",gap:8,alignItems:"center"}}>
+            <input readOnly value="716b1520-fbbf-406b-8992-ed068612c2ac" style={{flex:1,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13,background:"#f9fafb",color:"#6b7280"}} />
+            <button onClick={()=>navigator.clipboard?.writeText("716b1520-fbbf-406b-8992-ed068612c2ac")} style={{background:"#4a9eff",color:"#fff",border:"none",borderRadius:6,padding:"8px 16px",cursor:"pointer",fontSize:13}}>Copier</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Moyen de paiement
+function AdminMoyenPaiement() {
+  return (
+    <div style={{padding:24}}>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>Moyen de paiement</h2>
+      <p style={{fontSize:13,color:"#6b7280",marginBottom:16}}>Vous pouvez gérer vos informations bancaires utilisées par Planity pour votre abonnement et vos options.</p>
+      <div style={{background:"#fffbeb",border:"1px solid #f5c842",borderRadius:8,padding:12,marginBottom:16,display:"flex",gap:8,fontSize:13,color:"#92400e"}}>
+        <span>⚠</span>
+        <span>Si vous renseignez un nouveau moyen de paiement, il sera utilisé pour les prochaines factures.</span>
+      </div>
+      <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:20,maxWidth:500}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{background:"#f0f9ff",borderRadius:6,padding:"8px 12px",fontWeight:700,color:"#1e40af",fontSize:14}}>S€PA</div>
+          <div>
+            <div style={{fontWeight:600,fontSize:14}}>FR••••16</div>
+            <div style={{fontSize:12,color:"#6b7280"}}>OLINDA - Créé(e) le : 08/12/2025</div>
+          </div>
+        </div>
+        <button style={{marginTop:16,padding:"8px 20px",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",background:"#fff",fontSize:13,color:"#374151"}}>Modifier mon moyen de paiement</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Admin : Liste des factures
+function AdminFactures() {
+  return (
+    <div style={{padding:24}}>
+      <h2 style={{fontSize:18,fontWeight:600,marginBottom:20}}>Liste des factures</h2>
+      <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <thead><tr style={{background:"#f9fafb",borderBottom:"2px solid #e5e7eb"}}>
+          {["Numéro","Date","Montant TTC","Statut","Conditions de paiement","Actions"].map(h=>(
+            <th key={h} style={{padding:"10px 12px",textAlign:"left",fontSize:12,fontWeight:600,color:"#6b7280"}}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {FACTURES_DATA.map(f=>(
+            <tr key={f.id} style={{borderBottom:"1px solid #f3f4f6"}}>
+              <td style={{padding:"12px",fontSize:13}}>{f.id}</td>
+              <td style={{padding:"12px",fontSize:13}}>{f.date}</td>
+              <td style={{padding:"12px",fontSize:13}}>{f.montant}</td>
+              <td style={{padding:"12px",fontSize:13}}>
+                <span style={{background:f.statut==="Payée"?"#d1fae5":f.statut==="Avoir non appliqué"?"#fef3c7":"#fee2e2",color:f.statut==="Payée"?"#065f46":f.statut==="Avoir non appliqué"?"#92400e":"#991b1b",padding:"2px 10px",borderRadius:12,fontSize:12,fontWeight:500}}>
+                  {f.statut}
+                </span>
+              </td>
+              <td style={{padding:"12px",fontSize:13,color:"#6b7280"}}>{f.conditions}</td>
+              <td style={{padding:"12px",fontSize:13}}><span style={{color:"#c9a84c",cursor:"pointer",textDecoration:"underline"}}>Télécharger</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Helpers Stats
+function StatsTabs({active}) {
+  const tabs = ["Indicateurs clés","Autres indicateurs","Prestations","Collaborateurs","RDV","RDV pas venus"];
+  return (
+    <div style={{display:"flex",gap:0,borderBottom:"1px solid #e5e7eb",marginBottom:20,overflowX:"auto"}}>
+      {tabs.map(t=>(
+        <div key={t} style={{padding:"10px 14px",cursor:"pointer",borderBottom:t===active?"2px solid #c9a84c":"2px solid transparent",color:t===active?"#c9a84c":"#6b7280",fontSize:13,fontWeight:t===active?600:400,whiteSpace:"nowrap"}}>{t}</div>
+      ))}
+    </div>
+  );
+}
+
+function StatsToolbar() {
+  return (
+    <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
+      <Btn variant="link">📄 Exporter</Btn>
+      <Btn variant="link">🖨 Imprimer</Btn>
+      <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13}}><input type="checkbox" />Comparer à</label>
+        <button style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#6b7280"}}>‹</button>
+        <span style={{fontWeight:600,fontSize:14,padding:"4px 12px",border:"1px solid #d1d5db",borderRadius:6}}>Mai 2026</span>
+        <button style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#6b7280"}}>›</button>
+        <select style={{padding:"6px 10px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13}}><option>Mois</option></select>
+        <Btn variant="secondary" small>Aujourd'hui</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
+export default function App() {
+  const [tab, setTab] = useState("Agenda");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [currentTime, setCurrentTime] = useState(now());
+
+  useEffect(()=>{const t=setInterval(()=>setCurrentTime(now()),60000);return()=>clearInterval(t);},[]);
+
+  const tabs = ["Agenda","Caisse","Clients","Admin"];
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Helvetica Neue',Arial,sans-serif",background:"#0d1b2a"}}>
+      {/* Topbar */}
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"0 16px",height:52,background:"#0d1b2a",borderBottom:"1px solid #1e3a5f",flexShrink:0,zIndex:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:32,height:32,background:"#c9a84c",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",color:"#0d1b2a",fontWeight:900,fontSize:16}}>E</div>
+          <span style={{color:"#e2e8f0",fontWeight:700,fontSize:15,letterSpacing:2}}>ELNAGAR</span>
+        </div>
+        <button onClick={()=>setSidebarOpen(s=>!s)} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:18,padding:"4px 8px"}}>☰</button>
+        <div style={{display:"flex",gap:0,marginLeft:8}}>
+          {tabs.map(t=>(
+            <button key={t} onClick={()=>setTab(t)} style={{background:"none",border:"none",borderBottom:tab===t?"2px solid #c9a84c":"2px solid transparent",color:tab===t?"#c9a84c":"#94a3b8",cursor:"pointer",padding:"14px 16px",fontSize:14,fontWeight:tab===t?600:400}}>
+              {t}
+            </button>
+          ))}
+        </div>
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{color:"#e2e8f0",fontWeight:600,fontSize:15}}>{currentTime}</span>
+          <button style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>+ Nouveau RDV</button>
+          <button style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:20}}>🔔</button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+        {tab==="Agenda" && <AgendaView />}
+        {tab==="Caisse" && <CaisseView />}
+        {tab==="Clients" && <ClientsView />}
+        {tab==="Admin" && <AdminView />}
+      </div>
     </div>
   );
 }
