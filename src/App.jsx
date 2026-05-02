@@ -272,9 +272,51 @@ function RadioGroup({options, value, onChange}) {
 function AgendaView() {
   const [vue, setVue] = useState("semaine");
   const [showRdvModal, setShowRdvModal] = useState(false);
+  const [showNotifs, setShowNotifs] = useState(false);
   const [currentTime, setCurrentTime] = useState(now());
+  const [dragSlot, setDragSlot] = useState(null); // {col, startMin, endMin}
+  const [isDragging, setIsDragging] = useState(false);
+  const gridRef = useRef(null);
   const heures = Array.from({length:13},(_,i)=>i+8);
   const jours = ["Lun. 27/04","Mar. 28/04","Mer. 29/04","Jeu. 30/04","Ven. 01/05","Sam. 02/05","Dim. 03/05"];
+
+  const CELL_HEIGHT = 64; // px par heure
+  const START_HOUR = 8;
+
+  const getMinFromY = (y) => {
+    const raw = Math.floor(y / CELL_HEIGHT * 60);
+    return Math.round(raw / 15) * 15; // snap 15min
+  };
+
+  const handleMouseDown = (e, colIndex) => {
+    if (e.target.closest('[data-rdv]')) return; // ne pas déclencher sur un rdv existant
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const startMin = getMinFromY(y);
+    setDragSlot({col: colIndex, startMin, endMin: startMin + 30});
+    setIsDragging(true);
+  };
+
+  const handleMouseMove = (e, colIndex) => {
+    if (!isDragging || !dragSlot || dragSlot.col !== colIndex) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const endMin = getMinFromY(y);
+    if (endMin > dragSlot.startMin) {
+      setDragSlot(s => ({...s, endMin}));
+    }
+  };
+
+  const handleMouseUp = (colIndex) => {
+    if (isDragging && dragSlot && dragSlot.col === colIndex) {
+      setIsDragging(false);
+      if (dragSlot.endMin - dragSlot.startMin >= 15) {
+        setShowRdvModal(true);
+      }
+      setDragSlot(null);
+    }
+  };
 
   const rdvSemaine = {
     0:[{h:"10:45",fin:"11:30",nom:"Arthur Amar",prestation:"Coupe homme Elnagar",c:"#4a9eff"},{h:"11:30",fin:"12:15",nom:"Jérémy Bouirou",prestation:"Coupe homme",c:"#4a9eff"},{h:"12:15",fin:"13:00",nom:"Jacky AUBER LAOU-HAP",prestation:"Coupe",c:"#4a9eff"},{h:"13:00",fin:"14:00",nom:"SAM MIMOUN",prestation:"Coupe + Barbe Elnagar choisie",c:"#4a9eff"},{h:"14:15",fin:"14:45",nom:"Justin P",prestation:"Coupe homme",c:"#4a9eff"},{h:"15:15",fin:"15:45",nom:"Noa...",prestation:"Coupe",c:"#4a9eff"},{h:"16:30",fin:"17:15",nom:"Simon Mocquais",prestation:"Coupe homme",c:"#4a9eff"},{h:"17:15",fin:"18:00",nom:"Charles TROMPEAU",prestation:"Coupe homme",c:"#4a9eff"},{h:"18:00",fin:"18:45",nom:"Sebastien Joulin",prestation:"Coupe homme Elnag",c:"#4a9eff"}],
@@ -283,9 +325,10 @@ function AgendaView() {
     6:[{h:"19:15",fin:"19:45",nom:"kydra",prestation:"",c:"#9ca3af"}],
   };
 
-  useEffect(()=>{const t=setInterval(()=>setCurrentTime(now()),60000);return()=>clearInterval(t);},[]);
+  const toMin = (h,m) => parseInt(h)*60+parseInt(m||0);
+  const minToTop = (totalMin) => (totalMin - START_HOUR*60) / 60 * CELL_HEIGHT;
 
-  const topY = (h,m=0) => ((parseInt(h)-8)*60+parseInt(m||0))/60*64+48;
+  useEffect(()=>{const t=setInterval(()=>setCurrentTime(now()),60000);return()=>clearInterval(t);},[]);
 
   return (
     <div style={{display:"flex",flex:1,overflow:"hidden"}}>
@@ -312,17 +355,17 @@ function AgendaView() {
       </div>
 
       {/* Grille agenda */}
-      <div style={{flex:1,overflow:"auto",background:"#0d1b2a"}}>
+      <div style={{flex:1,overflow:"auto",background:"#fff"}}>
         {/* Toolbar */}
-        <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#0d1b2a",borderBottom:"1px solid #1e3a5f",position:"sticky",top:0,zIndex:10}}>
-          <button style={{background:"#1e3a5f",color:"#e2e8f0",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:13}}>Aujourd'hui</button>
-          <button style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:18}}>‹</button>
-          <button style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:18}}>›</button>
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#fff",borderBottom:"1px solid #e5e7eb",position:"sticky",top:0,zIndex:10}}>
+          <button style={{background:"#f3f4f6",color:"#374151",border:"1px solid #d1d5db",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:13}}>Aujourd'hui</button>
+          <button style={{background:"none",border:"none",color:"#374151",cursor:"pointer",fontSize:18}}>‹</button>
+          <button style={{background:"none",border:"none",color:"#374151",cursor:"pointer",fontSize:18}}>›</button>
           <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
-            <button onClick={()=>setVue("jour")} style={{background:vue==="jour"?"#c9a84c":"#1e3a5f",color:vue==="jour"?"#fff":"#94a3b8",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13}}>Vue jour</button>
-            <button onClick={()=>setVue("semaine")} style={{background:vue==="semaine"?"#c9a84c":"#1e3a5f",color:vue==="semaine"?"#fff":"#94a3b8",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13}}>Vue semaine</button>
-            <span style={{color:"#94a3b8",fontSize:13}}>⏱ 15 min</span>
-            <span style={{color:"#e2e8f0",fontWeight:600,fontSize:15}}>{currentTime}</span>
+            <button onClick={()=>setVue("jour")} style={{background:vue==="jour"?"#c9a84c":"#f3f4f6",color:vue==="jour"?"#fff":"#374151",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13}}>Vue jour</button>
+            <button onClick={()=>setVue("semaine")} style={{background:vue==="semaine"?"#c9a84c":"#f3f4f6",color:vue==="semaine"?"#fff":"#374151",border:"none",borderRadius:6,padding:"5px 12px",cursor:"pointer",fontSize:13}}>Vue semaine</button>
+            <span style={{color:"#6b7280",fontSize:13}}>⏱ 15 min</span>
+            <span style={{color:"#374151",fontWeight:600,fontSize:15}}>{currentTime}</span>
           </div>
         </div>
 
@@ -330,7 +373,7 @@ function AgendaView() {
         <div style={{display:"flex",minWidth:900}}>
           <div style={{width:56,flexShrink:0}} />
           {jours.map((j,i)=>(
-            <div key={i} style={{flex:1,textAlign:"center",padding:"8px 4px",borderLeft:"1px solid #1e3a5f",color:i===4?"#c9a84c":"#94a3b8",fontSize:13,fontWeight:i===4?600:400,background:"#0d1b2a",position:"sticky",top:56,zIndex:9}}>
+            <div key={i} style={{flex:1,textAlign:"center",padding:"8px 4px",borderLeft:"1px solid #e5e7eb",color:i===4?"#c9a84c":"#374151",fontSize:13,fontWeight:i===4?600:400,background:"#fff",position:"sticky",top:56,zIndex:9,borderBottom:"1px solid #e5e7eb"}}>
               {j}
             </div>
           ))}
@@ -340,22 +383,35 @@ function AgendaView() {
           {/* Heures */}
           <div style={{width:56,flexShrink:0}}>
             {heures.map(h=>(
-              <div key={h} style={{height:64,borderTop:"1px solid #1e3a5f",color:"#4a6a8a",fontSize:11,paddingTop:4,paddingLeft:4}}>{h}:00</div>
+              <div key={h} style={{height:64,borderTop:"1px solid #e5e7eb",color:"#9ca3af",fontSize:11,paddingTop:4,paddingLeft:4}}>{h}:00</div>
             ))}
           </div>
           {/* Colonnes */}
           {jours.map((_,ci)=>(
-            <div key={ci} style={{flex:1,borderLeft:"1px solid #1e3a5f",position:"relative",minHeight:heures.length*64}}>
+            <div
+              key={ci}
+              style={{flex:1,borderLeft:"1px solid #e5e7eb",position:"relative",minHeight:heures.length*CELL_HEIGHT,cursor:"crosshair",userSelect:"none"}}
+              onMouseDown={e=>handleMouseDown(e,ci)}
+              onMouseMove={e=>handleMouseMove(e,ci)}
+              onMouseUp={()=>handleMouseUp(ci)}
+              onMouseLeave={()=>{if(isDragging&&dragSlot?.col===ci){setIsDragging(false);setDragSlot(null);}}}
+            >
               {heures.map(h=>(
-                <div key={h} style={{height:64,borderTop:"1px solid #1e3a5f"}} />
+                <div key={h} style={{height:CELL_HEIGHT,borderTop:"1px solid #e5e7eb"}} />
               ))}
+              {/* Drag preview */}
+              {isDragging && dragSlot?.col===ci && dragSlot.endMin>dragSlot.startMin && (
+                <div style={{position:"absolute",top:minToTop(dragSlot.startMin),left:2,right:2,height:(dragSlot.endMin-dragSlot.startMin)/60*CELL_HEIGHT-2,background:"rgba(201,168,76,0.35)",borderRadius:4,border:"2px dashed #c9a84c",pointerEvents:"none",zIndex:5,display:"flex",alignItems:"center",justifyContent:"center",color:"#c9a84c",fontSize:11,fontWeight:600}}>
+                  {`${String(Math.floor((START_HOUR*60+dragSlot.startMin)/60)).padStart(2,"0")}:${String((START_HOUR*60+dragSlot.startMin)%60).padStart(2,"0")} → ${String(Math.floor((START_HOUR*60+dragSlot.endMin)/60)).padStart(2,"0")}:${String((START_HOUR*60+dragSlot.endMin)%60).padStart(2,"0")}`}
+                </div>
+              )}
               {(rdvSemaine[ci]||[]).map((rdv,ri)=>{
                 const [hh,mm] = rdv.h.split(":");
                 const [fhh,fmm] = rdv.fin.split(":");
-                const top = ((parseInt(hh)-8)*60+parseInt(mm))/60*64;
-                const height = ((parseInt(fhh)*60+parseInt(fmm))-(parseInt(hh)*60+parseInt(mm)))/60*64-2;
+                const top = (parseInt(hh)*60+parseInt(mm) - START_HOUR*60)/60*CELL_HEIGHT;
+                const height = ((parseInt(fhh)*60+parseInt(fmm))-(parseInt(hh)*60+parseInt(mm)))/60*CELL_HEIGHT-2;
                 return (
-                  <div key={ri} onClick={()=>setShowRdvModal(true)} style={{position:"absolute",top,left:2,right:2,height,background:rdv.c+"dd",borderRadius:4,padding:"2px 4px",overflow:"hidden",cursor:"pointer",fontSize:11,color:"#fff",borderLeft:`3px solid ${rdv.c}`}}>
+                  <div data-rdv="1" key={ri} onClick={e=>{e.stopPropagation();setShowRdvModal(true);}} style={{position:"absolute",top,left:2,right:2,height,background:rdv.c+"dd",borderRadius:4,padding:"2px 4px",overflow:"hidden",cursor:"pointer",fontSize:11,color:"#fff",borderLeft:`3px solid ${rdv.c}`,zIndex:4}}>
                     <div style={{fontWeight:600}}>{rdv.h} - {rdv.fin}</div>
                     {rdv.nom && <div>{rdv.nom}</div>}
                     {rdv.prestation && <div style={{opacity:0.85}}>{rdv.prestation}</div>}
@@ -368,6 +424,40 @@ function AgendaView() {
       </div>
 
       {showRdvModal && <ModalRDV onClose={()=>setShowRdvModal(false)} />}
+
+      {/* Panel notifications (sidebar droite) */}
+      {showNotifs && (
+        <div style={{width:340,background:"#fff",borderLeft:"1px solid #e5e7eb",overflowY:"auto",flexShrink:0,padding:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <span style={{fontWeight:700,fontSize:16}}>Notifications</span>
+            <button onClick={()=>setShowNotifs(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#9ca3af"}}>×</button>
+          </div>
+          <div style={{fontWeight:600,fontSize:13,color:"#374151",marginBottom:12}}>À LA UNE</div>
+          <div style={{background:"#f9fafb",borderRadius:8,padding:12,marginBottom:12,fontWeight:600,fontSize:13,color:"#374151"}}>En avril</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+            <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:12}}>
+              <div style={{fontSize:28,fontWeight:700,color:"#c9a84c"}}>76</div>
+              <div style={{fontSize:12,color:"#374151",fontWeight:600}}>Nouveaux clients</div>
+              <div style={{fontSize:11,color:"#6b7280"}}>dont 69 en ligne (91 %)</div>
+            </div>
+            <div style={{background:"#fff",border:"1px solid #e5e7eb",borderRadius:8,padding:12}}>
+              <div style={{fontSize:28,fontWeight:700,color:"#4a9eff"}}>204</div>
+              <div style={{fontSize:12,color:"#374151",fontWeight:600}}>RDV pris</div>
+              <div style={{fontSize:11,color:"#6b7280"}}>dont 179 en ligne (88 %)</div>
+            </div>
+          </div>
+          <div style={{color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline",marginBottom:16}}>📊 Voir le rapport complet</div>
+          {[{t:"Vous avez 1 avis à modérer",d:"Il y a 3 jours"},{t:"Vous avez 1 avis à modérer",d:"Il y a 6 jours"},{t:"Vous avez 1 avis à modérer",d:"Il y a 7 jours"}].map((n,i)=>(
+            <div key={i} style={{padding:"12px 0",borderBottom:"1px solid #f3f4f6",fontSize:13,color:"#374151"}}>
+              <div>{n.t}</div>
+              <div style={{color:"#9ca3af",fontSize:12,marginTop:2}}>{n.d}</div>
+            </div>
+          ))}
+          <div style={{marginTop:16,display:"flex",gap:12}}>
+            <span style={{color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>↩ Gérer mes avis</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -465,18 +555,17 @@ function ModalRDV({onClose}) {
 
 // ─── CAISSE ───────────────────────────────────────────────────────────────────
 function CaisseView() {
-  const [sideSection, setSideSection] = useState("encaissement");
+  const [sideSection, setSideSection] = useState("Encaissement");
   const [activeSide, setActiveSide] = useState("Nouveau ticket");
-  const [ticket, setTicket] = useState([]);
+  const [ticket, setTicket] = useState([]); // [{type,nom,vendeur,qte,prix,couleur,id}]
   const [clientSearch, setClientSearch] = useState("");
   const [selectedClient, setSelectedClient] = useState(null);
   const [modalType, setModalType] = useState(null);
   const [paiement, setPaiement] = useState("Carte");
-  const [remise, setRemise] = useState(0);
-  const [pourboire, setPourboire] = useState(0);
+  const [paiementDone, setPaiementDone] = useState(false);
+  const [ticketsEnAttente, setTicketsEnAttente] = useState([]);
 
-  const total = ticket.reduce((s,i)=>s+i.prix,0);
-  const totalNet = Math.max(0, total - remise);
+  const total = ticket.reduce((s,i)=>s + i.prix * i.qte, 0);
   const filteredClients = CLIENTS_DATA.filter(c=>c.nom.toLowerCase().includes(clientSearch.toLowerCase()));
 
   const sidebarSections = {
@@ -492,24 +581,62 @@ function CaisseView() {
     "Boutique en ligne": [],
   };
 
+  const handleSideClick = (section, items) => {
+    if (items.length > 0) {
+      setSideSection(sideSection === section ? null : section);
+    } else {
+      setSideSection(section);
+      setActiveSide(section);
+    }
+  };
+
+  const updateItem = (idx, field, val) => {
+    setTicket(t => t.map((item,i) => i===idx ? {...item, [field]: field==="qte"?Math.max(1,Number(val)):Number(val)||item[field]} : item));
+  };
+
+  const removeItem = (idx) => setTicket(t => t.filter((_,i) => i!==idx));
+
+  const handlePaiement = () => {
+    if (total === 0) return;
+    setPaiementDone(true);
+    setTimeout(() => {
+      setPaiementDone(false);
+      setTicket([]);
+      setSelectedClient(null);
+      setClientSearch("");
+    }, 2500);
+  };
+
+  const mettreEnAttente = () => {
+    if (ticket.length === 0) return;
+    setTicketsEnAttente(ta => [...ta, {id: Date.now(), client: selectedClient?.nom || "Sans nom", items: [...ticket]}]);
+    setTicket([]);
+    setSelectedClient(null);
+    setClientSearch("");
+  };
+
+  const isNewTicket = activeSide === "Nouveau ticket" || activeSide === "Encaissement";
+
   return (
     <div style={{display:"flex",flex:1,overflow:"hidden"}}>
       {/* Sidebar */}
-      <div style={{width:220,background:"#0d1b2a",borderRight:"1px solid #1e3a5f",overflowY:"auto",flexShrink:0}}>
-        {Object.entries(sidebarSections).map(([section,items])=>(
-          <div key={section}>
-            <div onClick={()=>setSideSection(sideSection===section?null:section)} style={{padding:"10px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",color:sideSection===section?"#c9a84c":"#e2e8f0",fontWeight:sideSection===section?600:400,fontSize:14}}>
-              <span>{section}</span>
-              <span style={{fontSize:10}}>{items.length>0?(sideSection===section?"▼":"▶"):""}</span>
-            </div>
-            {sideSection===section && items.map(item=>(
-              <div key={item} onClick={()=>setActiveSide(item)} style={{padding:"8px 16px 8px 28px",cursor:"pointer",color:activeSide===item?"#c9a84c":"#94a3b8",background:activeSide===item?"rgba(201,168,76,0.08)":"transparent",fontSize:13,borderLeft:activeSide===item?"3px solid #c9a84c":"3px solid transparent"}}>
-                {item}
+      <div style={{width:220,background:"#0d1b2a",borderRight:"1px solid #1e3a5f",overflowY:"auto",flexShrink:0,display:"flex",flexDirection:"column"}}>
+        <div style={{flex:1}}>
+          {Object.entries(sidebarSections).map(([section,items])=>(
+            <div key={section}>
+              <div onClick={()=>handleSideClick(section,items)} style={{padding:"10px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",color:(sideSection===section&&items.length>0)||activeSide===section?"#c9a84c":"#e2e8f0",fontWeight:activeSide===section||sideSection===section?600:400,fontSize:14,borderLeft:activeSide===section&&items.length===0?"3px solid #c9a84c":"3px solid transparent"}}>
+                <span>{section}</span>
+                {items.length>0 && <span style={{fontSize:10,color:"#94a3b8"}}>{sideSection===section?"▼":"▶"}</span>}
               </div>
-            ))}
-          </div>
-        ))}
-        <div style={{position:"sticky",bottom:0,padding:"8px 16px",background:"#0d1b2a",borderTop:"1px solid #1e3a5f",color:"#94a3b8",fontSize:12}}>
+              {sideSection===section && items.map(item=>(
+                <div key={item} onClick={()=>setActiveSide(item)} style={{padding:"8px 16px 8px 28px",cursor:"pointer",color:activeSide===item?"#c9a84c":"#94a3b8",background:activeSide===item?"rgba(201,168,76,0.08)":"transparent",fontSize:13,borderLeft:activeSide===item?"3px solid #c9a84c":"3px solid transparent"}}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div style={{padding:"8px 16px",borderTop:"1px solid #1e3a5f",color:"#94a3b8",fontSize:12}}>
           <div>02/05/2026</div>
           <div>0 RDV · <span style={{color:"#c9a84c"}}>0,00 €</span></div>
         </div>
@@ -517,115 +644,173 @@ function CaisseView() {
 
       {/* Main */}
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-        <div style={{flex:1,padding:24,overflowY:"auto"}}>
-          {/* Client */}
-          <div style={{display:"flex",gap:12,marginBottom:16}}>
-            <div style={{position:"relative",flex:2}}>
-              <input value={clientSearch} onChange={e=>{setClientSearch(e.target.value);setSelectedClient(null);}} placeholder="Choisir un client" style={{width:"100%",padding:"10px 12px 10px 36px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
-              <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#9ca3af"}}>👤</span>
-              {clientSearch && !selectedClient && (
-                <div style={{position:"absolute",top:"100%",left:0,right:0,border:"1px solid #e5e7eb",borderRadius:6,background:"#fff",zIndex:100,boxShadow:"0 4px 12px rgba(0,0,0,0.1)"}}>
-                  {filteredClients.slice(0,5).map(c=>(
-                    <div key={c.id} onClick={()=>{setSelectedClient(c);setClientSearch(c.nom);}} style={{padding:"8px 12px",cursor:"pointer",fontSize:14,borderBottom:"1px solid #f3f4f6"}}>
-                      <strong>{c.nom}</strong> <span style={{color:"#9ca3af"}}>{c.tel}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <input placeholder="🇫🇷 Téléphone" style={{flex:1,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-            <input placeholder="Email" style={{flex:1,padding:"10px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-          </div>
 
-          {/* Boutons */}
-          <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-            {["Prestation","Produit","Montant libre","Remise","RDV"].map(b=>(
-              <button key={b} onClick={()=>setModalType(b)} style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"8px 16px",cursor:"pointer",fontWeight:500,fontSize:14}}>
-                {b}
-              </button>
-            ))}
-          </div>
-
-          {/* Liste ticket */}
-          {ticket.length===0 ? (
-            <div style={{color:"#9ca3af",textAlign:"center",marginTop:40,fontSize:14}}>Ajouter une prestation ou un produit</div>
-          ) : (
-            <div>
-              {ticket.map((item,i)=>(
-                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f3f4f6"}}>
+        {/* Page Tickets en attente */}
+        {activeSide === "Tickets en attente" && (
+          <div style={{flex:1,padding:24,overflowY:"auto"}}>
+            <h2 style={{fontSize:18,fontWeight:600,marginBottom:16}}>Tickets en attente</h2>
+            {ticketsEnAttente.length === 0 ? (
+              <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:14}}>Aucun ticket en attente</div>
+            ) : (
+              ticketsEnAttente.map(t=>(
+                <div key={t.id} style={{border:"1px solid #e5e7eb",borderRadius:8,padding:16,marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
-                    <div style={{fontWeight:500,fontSize:14}}>{item.nom}</div>
-                    {item.duree && <div style={{color:"#9ca3af",fontSize:12}}>{item.duree} min</div>}
+                    <div style={{fontWeight:600}}>{t.client}</div>
+                    <div style={{fontSize:13,color:"#6b7280"}}>{t.items.length} article(s) · {fmt(t.items.reduce((s,i)=>s+i.prix*i.qte,0))}</div>
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:12}}>
-                    <span style={{color:"#c9a84c",fontWeight:600}}>{fmt(item.prix)}</span>
-                    <button onClick={()=>setTicket(t=>t.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:16}}>×</button>
-                  </div>
+                  <button onClick={()=>{setTicket(t.items);setTicketsEnAttente(ta=>ta.filter(x=>x.id!==t.id));setActiveSide("Nouveau ticket");}} style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:13}}>Reprendre</button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        )}
 
-        {/* Panel ticket */}
-        <div style={{width:280,borderLeft:"1px solid #e5e7eb",padding:20,background:"#f9fafb",display:"flex",flexDirection:"column"}}>
-          <div style={{fontWeight:600,fontSize:16,marginBottom:16}}>Ticket</div>
-          {ticket.length===0 ? (
-            <div style={{color:"#9ca3af",fontSize:13,flex:1,display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"}}>Ajouter une prestation</div>
-          ) : (
-            <div style={{flex:1}}>
-              {ticket.map((i,idx)=>(
-                <div key={idx} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
-                  <span>{i.nom}</span><span style={{color:"#c9a84c"}}>{fmt(i.prix)}</span>
+        {/* Pages sections sans ticket */}
+        {!isNewTicket && activeSide !== "Tickets en attente" && (
+          <div style={{flex:1,padding:32,overflowY:"auto",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",color:"#6b7280"}}>
+            <div style={{fontSize:48,marginBottom:16}}>{activeSide==="Transactions"?"📋":activeSide==="Paiements en plusieurs fois"?"💳":activeSide==="Données comptables"?"📊":activeSide==="Cartes cadeaux & cures"?"🎁":activeSide==="Gestion des stocks"?"📦":activeSide==="Paiement en ligne"?"🌐":activeSide==="Terminal de paiement"?"💻":activeSide==="Tap to Pay"?"📱":"🛍️"}</div>
+            <div style={{fontSize:18,fontWeight:600,color:"#374151",marginBottom:8}}>{activeSide}</div>
+            <div style={{fontSize:14,textAlign:"center",maxWidth:320,color:"#6b7280"}}>Section disponible via Planity Pro.</div>
+          </div>
+        )}
+
+        {/* Nouveau ticket */}
+        {isNewTicket && (
+          <>
+          <div style={{flex:1,overflowY:"auto"}}>
+            {/* Client bar */}
+            <div style={{padding:"12px 20px",borderBottom:"1px solid #e5e7eb",display:"flex",gap:12}}>
+              <div style={{position:"relative",flex:2}}>
+                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#9ca3af",fontSize:16}}>👤</span>
+                <input value={clientSearch} onChange={e=>{setClientSearch(e.target.value);setSelectedClient(null);}} placeholder="Choisir un client" style={{width:"100%",padding:"9px 12px 9px 34px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+                {clientSearch && !selectedClient && (
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,border:"1px solid #e5e7eb",borderRadius:6,background:"#fff",zIndex:100,boxShadow:"0 4px 12px rgba(0,0,0,0.1)",maxHeight:200,overflowY:"auto"}}>
+                    {filteredClients.slice(0,6).map(c=>(
+                      <div key={c.id} onClick={()=>{setSelectedClient(c);setClientSearch(c.nom);}} style={{padding:"8px 12px",cursor:"pointer",fontSize:14,borderBottom:"1px solid #f3f4f6"}} onMouseEnter={e=>e.currentTarget.style.background="#f9fafb"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                        <strong>{c.nom}</strong> <span style={{color:"#9ca3af"}}>{c.tel}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <input placeholder="🇫🇷 Téléphone" style={{flex:1,padding:"9px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+              <input placeholder="Email" style={{flex:1,padding:"9px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+            </div>
+
+            {/* Ticket lines - style Planity */}
+            <div style={{padding:"8px 0"}}>
+              {ticket.map((item,idx)=>(
+                <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 16px",borderBottom:"1px solid #f3f4f6",background:"#fff"}}>
+                  {/* Icône type */}
+                  <div style={{width:32,height:32,borderRadius:6,background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>
+                    {item.type==="prestation"?"📋":"📦"}
+                  </div>
+                  {/* Nom dropdown */}
+                  <div style={{flex:2,minWidth:0}}>
+                    <div style={{fontSize:10,color:"#9ca3af",marginBottom:1}}>{item.type==="prestation"?"Prestation":"Produit"}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{fontWeight:600,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",borderLeft:`3px solid ${item.couleur||"#c9a84c"}`,paddingLeft:6}}>{item.nom}</span>
+                      <span style={{color:"#9ca3af",fontSize:12}}>▼</span>
+                    </div>
+                  </div>
+                  {/* Vendeur */}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:10,color:"#9ca3af",marginBottom:1}}>par</div>
+                    <div style={{display:"flex",alignItems:"center",gap:2,fontSize:13,color:"#6b7280",cursor:"pointer"}}>
+                      Choisir un vendeur <span style={{fontSize:11}}>▼</span>
+                    </div>
+                  </div>
+                  {/* Quantité */}
+                  <div style={{display:"flex",alignItems:"center",gap:0,border:"1px solid #d1d5db",borderRadius:6,overflow:"hidden",flexShrink:0}}>
+                    <button onClick={()=>updateItem(idx,"qte",item.qte-1)} style={{width:28,height:32,background:"#f9fafb",border:"none",cursor:"pointer",fontSize:16,color:"#374151"}}>−</button>
+                    <input type="number" value={item.qte} onChange={e=>updateItem(idx,"qte",e.target.value)} style={{width:32,height:32,border:"none",textAlign:"center",fontSize:14,fontWeight:600}} />
+                    <button onClick={()=>updateItem(idx,"qte",item.qte+1)} style={{width:28,height:32,background:"#f9fafb",border:"none",cursor:"pointer",fontSize:16,color:"#374151"}}>+</button>
+                  </div>
+                  {/* Prix */}
+                  <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                    <input type="number" value={item.prix} onChange={e=>updateItem(idx,"prix",e.target.value)} style={{width:72,padding:"4px 6px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,textAlign:"right",fontWeight:600,color:"#c9a84c"}} />
+                    <span style={{fontSize:13,color:"#6b7280"}}>€</span>
+                  </div>
+                  {/* Supprimer */}
+                  <button onClick={()=>removeItem(idx)} style={{background:"none",border:"1px solid #e5e7eb",borderRadius:6,width:28,height:28,cursor:"pointer",color:"#9ca3af",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>×</button>
                 </div>
               ))}
             </div>
-          )}
-          <div style={{marginTop:12}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-              <div>
-                <div style={{fontSize:11,color:"#9ca3af",marginBottom:4}}>Remise (€)</div>
-                <input type="number" value={remise} onChange={e=>setRemise(Number(e.target.value))} style={{width:"100%",padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13,boxSizing:"border-box"}} />
-              </div>
-              <div>
-                <div style={{fontSize:11,color:"#9ca3af",marginBottom:4}}>Pourboire (€)</div>
-                <input type="number" value={pourboire} onChange={e=>setPourboire(Number(e.target.value))} style={{width:"100%",padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13,boxSizing:"border-box"}} />
-              </div>
-            </div>
-            <div style={{fontSize:12,color:"#6b7280",marginBottom:8}}>Mode de paiement</div>
-            <div style={{display:"flex",gap:4,marginBottom:16}}>
-              {["Carte","Espèces","Virement"].map(m=>(
-                <button key={m} onClick={()=>setPaiement(m)} style={{flex:1,padding:"6px 4px",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",background:paiement===m?"#c9a84c":"#fff",color:paiement===m?"#fff":"#374151",fontSize:12,fontWeight:paiement===m?600:400}}>
-                  {m==="Carte"?"💳 ":m==="Espèces"?"💵 ":"🏦 "}{m}
+
+            {/* Boutons ajout */}
+            <div style={{padding:"12px 16px",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{color:"#9ca3af",fontSize:18,marginRight:4}}>+</span>
+              {["Prestation","Produit","Montant libre","Remise"].map(b=>(
+                <button key={b} onClick={()=>setModalType(b)} style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"7px 16px",cursor:"pointer",fontWeight:500,fontSize:13}}>
+                  {b}
                 </button>
               ))}
             </div>
-            <button style={{width:"100%",background:total>0?"#c9a84c":"#e5e7eb",color:total>0?"#fff":"#9ca3af",border:"none",borderRadius:6,padding:"12px",fontSize:15,fontWeight:600,cursor:total>0?"pointer":"default"}}>
-              Paiement {fmt(totalNet+pourboire)}
-            </button>
+
+            {ticket.length === 0 && (
+              <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:14}}>Ajouter une prestation ou un produit</div>
+            )}
           </div>
-        </div>
+
+          {/* Barre paiement en bas à droite - style Planity */}
+          <div style={{width:300,borderLeft:"1px solid #e5e7eb",display:"flex",flexDirection:"column",background:"#fff"}}>
+            <div style={{flex:1,padding:16,overflowY:"auto"}}>
+              <div style={{fontWeight:600,fontSize:16,marginBottom:12}}>Ticket</div>
+              {ticket.length===0 ? (
+                <div style={{color:"#9ca3af",fontSize:13,textAlign:"center",paddingTop:20}}>Ajouter une prestation</div>
+              ) : (
+                ticket.map((item,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6,gap:8}}>
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.nom} {item.qte>1?`×${item.qte}`:""}</span>
+                    <span style={{color:"#c9a84c",fontWeight:600,flexShrink:0}}>{fmt(item.prix*item.qte)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+            <div style={{padding:"12px 16px",borderTop:"1px solid #e5e7eb"}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:15,marginBottom:12}}>
+                <span>Total</span>
+                <span style={{color:"#c9a84c"}}>{fmt(total)}</span>
+              </div>
+              <div style={{display:"flex",gap:4,marginBottom:10}}>
+                {["Carte","Espèces","Virement"].map(m=>(
+                  <button key={m} onClick={()=>setPaiement(m)} style={{flex:1,padding:"6px 4px",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",background:paiement===m?"#c9a84c":"#fff",color:paiement===m?"#fff":"#374151",fontSize:12,fontWeight:paiement===m?600:400}}>
+                    {m==="Carte"?"💳":m==="Espèces"?"💵":"🏦"} {m}
+                  </button>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={mettreEnAttente} style={{flex:1,background:"none",border:"1px solid #d1d5db",borderRadius:6,padding:"10px",fontSize:13,cursor:"pointer",color:"#374151",fontWeight:500}}>
+                  Mettre en attente
+                </button>
+                <button onClick={handlePaiement} style={{flex:2,background:total>0?"#c9a84c":"#e5e7eb",color:total>0?"#fff":"#9ca3af",border:"none",borderRadius:6,padding:"10px",fontSize:14,fontWeight:700,cursor:total>0?"pointer":"default"}}>
+                  {paiementDone?"✓ Encaissé !":total>0?`Paiement ${fmt(total)}`:"Paiement 0,00 €"}
+                </button>
+              </div>
+            </div>
+          </div>
+          </>
+        )}
       </div>
 
       {/* Modals */}
       {modalType==="Prestation" && (
         <Modal title="Choisir une prestation" onClose={()=>setModalType(null)} width="700px">
           <div style={{display:"flex",gap:0}}>
-            <div style={{width:180,borderRight:"1px solid #e5e7eb",paddingRight:12}}>
+            <div style={{width:180,borderRight:"1px solid #e5e7eb",paddingRight:0}}>
+              <input placeholder="🔍 Choisir une prestation" style={{width:"100%",padding:"8px 12px",border:"none",borderBottom:"1px solid #e5e7eb",fontSize:13,boxSizing:"border-box"}} />
               {Object.keys(PRESTATIONS_CAISSE).map(cat=>(
-                <div key={cat} style={{padding:"10px 12px",cursor:"pointer",borderRadius:6,fontWeight:500,fontSize:14,marginBottom:2,color:"#374151"}}>{cat}</div>
+                <div key={cat} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,color:"#374151",borderBottom:"1px solid #f3f4f6"}}>{cat}</div>
               ))}
-              <div style={{padding:"10px 12px",cursor:"pointer",borderRadius:6,color:"#c9a84c",fontSize:14,display:"flex",alignItems:"center",gap:4}}>⊕ Créer une prestation</div>
+              <div style={{padding:"10px 14px",cursor:"pointer",color:"#c9a84c",fontSize:13,display:"flex",alignItems:"center",gap:4}}>⊕ Créer une prestation</div>
             </div>
-            <div style={{flex:1,paddingLeft:12}}>
-              <input placeholder="Choisir une prestation" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,marginBottom:12,boxSizing:"border-box"}} />
+            <div style={{flex:1,paddingLeft:0,maxHeight:420,overflowY:"auto"}}>
               {Object.values(PRESTATIONS_CAISSE).flat().map(p=>(
-                <div key={p.id} onClick={()=>{setTicket(t=>[...t,p]);setModalType(null);}} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer",fontSize:14}}>
-                  <div style={{borderLeft:`3px solid ${p.couleur}`,paddingLeft:8}}>
+                <div key={p.id} onClick={()=>{setTicket(t=>[...t,{...p,type:"prestation",qte:1}]);setModalType(null);}} style={{display:"flex",justifyContent:"space-between",padding:"12px 16px",borderBottom:"1px solid #f3f4f6",cursor:"pointer",fontSize:14,alignItems:"center"}} onMouseEnter={e=>e.currentTarget.style.background="#f9fafb"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  <div style={{borderLeft:`3px solid ${p.couleur}`,paddingLeft:10}}>
                     <div style={{fontWeight:500}}>{p.nom}</div>
-                    <div style={{color:"#9ca3af",fontSize:12}}>{p.duree>0?`${p.duree}min`:""}</div>
+                    <div style={{color:"#9ca3af",fontSize:12}}>{p.duree>0?`${p.duree} min · `:""}{p.prix===0?"Gratuit":`${p.prix},00 €`}</div>
                   </div>
-                  <span style={{color:"#c9a84c",fontWeight:500}}>{p.prix===0?"Gratuit":`${p.prix},00 €`}</span>
                 </div>
               ))}
             </div>
@@ -636,20 +821,41 @@ function CaisseView() {
       {modalType==="Produit" && (
         <Modal title="Choisir un produit" onClose={()=>setModalType(null)} width="700px">
           <div style={{display:"flex",gap:0}}>
-            <div style={{width:180,borderRight:"1px solid #e5e7eb",paddingRight:12}}>
+            <div style={{width:180,borderRight:"1px solid #e5e7eb"}}>
+              <input placeholder="🔍 Choisir un produit" style={{width:"100%",padding:"8px 12px",border:"none",borderBottom:"1px solid #e5e7eb",fontSize:13,boxSizing:"border-box"}} />
               {Object.keys(PRODUITS_CAISSE).map(cat=>(
-                <div key={cat} style={{padding:"10px 12px",cursor:"pointer",borderRadius:6,fontWeight:500,fontSize:14,marginBottom:2,color:"#374151"}}>{cat}</div>
+                <div key={cat} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,color:"#374151",borderBottom:"1px solid #f3f4f6"}}>{cat}</div>
               ))}
             </div>
-            <div style={{flex:1,paddingLeft:12}}>
-              <input placeholder="Choisir un produit" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,marginBottom:12,boxSizing:"border-box"}} />
+            <div style={{flex:1,maxHeight:420,overflowY:"auto"}}>
               {Object.values(PRODUITS_CAISSE).flat().map(p=>(
-                <div key={p.id} onClick={()=>{setTicket(t=>[...t,{...p,duree:null}]);setModalType(null);}} style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer",fontSize:14}}>
-                  <div><div style={{fontWeight:500}}>{p.nom}</div></div>
-                  <span style={{color:"#c9a84c",fontWeight:500}}>{p.prix},00 € · <span style={{color:"#9ca3af",fontWeight:400}}>{p.stock} en stock</span></span>
+                <div key={p.id} onClick={()=>{setTicket(t=>[...t,{...p,type:"produit",qte:1}]);setModalType(null);}} style={{display:"flex",justifyContent:"space-between",padding:"12px 16px",borderBottom:"1px solid #f3f4f6",cursor:"pointer",fontSize:14,alignItems:"center"}} onMouseEnter={e=>e.currentTarget.style.background="#f9fafb"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  <div style={{fontWeight:500}}>{p.nom}</div>
+                  <span style={{color:"#c9a84c",fontSize:13}}>{p.prix},00 € · <span style={{color:"#9ca3af"}}>{p.stock} en stock</span></span>
                 </div>
               ))}
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {modalType==="Montant libre" && (
+        <Modal title="Montant libre" onClose={()=>setModalType(null)} width="400px">
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div>
+              <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4}}>Libellé</label>
+              <input id="ml-nom" placeholder="Description" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:12,color:"#6b7280",marginBottom:4}}>Montant (€)</label>
+              <input id="ml-prix" type="number" placeholder="0" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} />
+            </div>
+            <button onClick={()=>{
+              const nom=document.getElementById("ml-nom").value||"Montant libre";
+              const prix=parseFloat(document.getElementById("ml-prix").value)||0;
+              setTicket(t=>[...t,{type:"montant",nom,prix,qte:1,couleur:"#c9a84c"}]);
+              setModalType(null);
+            }} style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"10px",cursor:"pointer",fontSize:14,fontWeight:600}}>Ajouter</button>
           </div>
         </Modal>
       )}
@@ -658,14 +864,25 @@ function CaisseView() {
         <Modal title="Appliquer une remise" onClose={()=>setModalType(null)} width="480px">
           <div>
             {REMISES_DATA.map(r=>(
-              <div key={r.id} onClick={()=>{setRemise(r.type==="fixe"?r.valeur:total*r.valeur/100);setModalType(null);}} style={{display:"flex",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer",fontSize:14}}>
+              <div key={r.id} onClick={()=>{
+                const montantRemise = r.type==="fixe" ? -r.valeur : -(total*r.valeur/100);
+                setTicket(t=>[...t,{type:"remise",nom:`Remise ${r.nom}`,prix:montantRemise,qte:1,couleur:"#ef4444"}]);
+                setModalType(null);
+              }} style={{display:"flex",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer",fontSize:14}} onMouseEnter={e=>e.currentTarget.style.background="#f9fafb"} onMouseLeave={e=>e.currentTarget.style.background=""}>
                 <span style={{fontWeight:500}}>{r.nom}</span>
                 <span style={{color:"#c9a84c"}}>{r.type==="fixe"?`-${r.valeur} €`:`-${r.valeur} %`}</span>
               </div>
             ))}
             <div style={{marginTop:16}}>
-              <label style={{fontSize:12,color:"#6b7280",display:"block",marginBottom:4}}>Montant libre</label>
-              <input type="number" placeholder="0" style={{width:"100%",padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,boxSizing:"border-box"}} onKeyDown={e=>{if(e.key==="Enter"){setRemise(Number(e.target.value));setModalType(null);}}} />
+              <label style={{fontSize:12,color:"#6b7280",display:"block",marginBottom:4}}>Remise manuelle (€)</label>
+              <div style={{display:"flex",gap:8}}>
+                <input id="remise-libre" type="number" placeholder="0" style={{flex:1,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                <button onClick={()=>{
+                  const v=parseFloat(document.getElementById("remise-libre").value)||0;
+                  if(v>0){setTicket(t=>[...t,{type:"remise",nom:`Remise -${v}€`,prix:-v,qte:1,couleur:"#ef4444"}]);}
+                  setModalType(null);
+                }} style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"8px 16px",cursor:"pointer",fontSize:13}}>Appliquer</button>
+              </div>
             </div>
           </div>
         </Modal>
@@ -898,91 +1115,194 @@ function AdminContent({page, onNavigate}) {
 
 // ── Admin : Gestion des prestations
 function AdminPrestations() {
-  const [prestations, setPrestations] = useState(PRESTATIONS_ADMIN);
+  const [prestations, setPrestations] = useState(
+    Object.fromEntries(Object.entries(PRESTATIONS_ADMIN).map(([k,v])=>[k,v.map(p=>({...p,deleted:false}))]))
+  );
+  const [catOrder, setCatOrder] = useState(Object.keys(PRESTATIONS_ADMIN));
   const [editModal, setEditModal] = useState(null);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [editData, setEditData] = useState({});
+  const [addCatModal, setAddCatModal] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [reorderMode, setReorderMode] = useState(false);
+  const [dragCat, setDragCat] = useState(null);
+  const [toast, setToast] = useState(null);
 
-  const openEdit = (p) => { setEditData({...p,couleur:p.couleur||"#f5c842",abrev:"",description:"",visibilite:"Prestation réservable",rdvDelai:1,annulDelai:6,frequence:15}); setEditModal(p); };
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(null),2500); };
+
+  const openEdit = (p, cat) => {
+    setEditData({...p, cat, abrev:p.abrev||"", description:p.description||"", couleur:p.couleur||"#c9a84c", visibilite:p.visibilite||"Prestation réservable", rdvDelai:1, annulDelai:6, frequence:15});
+    setEditModal({p, cat});
+    setShowPalette(false);
+  };
+
+  const saveEdit = () => {
+    setPrestations(prev => ({
+      ...prev,
+      [editData.cat]: prev[editData.cat].map(p => p.id===editData.id ? {...editData} : p)
+    }));
+    setEditModal(null);
+    showToast("Prestation modifiée");
+  };
+
+  const deletePrestation = (cat, id) => {
+    setPrestations(prev => ({
+      ...prev,
+      [cat]: prev[cat].map(p => p.id===id ? {...p, deleted:true} : p)
+    }));
+    showToast("Prestation supprimée");
+  };
+
+  const restorePrestation = (cat, id) => {
+    setPrestations(prev => ({
+      ...prev,
+      [cat]: prev[cat].map(p => p.id===id ? {...p, deleted:false} : p)
+    }));
+    showToast("Prestation restaurée");
+  };
+
+  const deleteCategory = (cat) => {
+    setCatOrder(o => o.filter(c=>c!==cat));
+    setPrestations(prev => {const n={...prev}; delete n[cat]; return n;});
+    showToast("Catégorie supprimée");
+  };
+
+  const addCategory = () => {
+    if (!newCatName.trim()) return;
+    setCatOrder(o=>[...o, newCatName]);
+    setPrestations(prev=>({...prev, [newCatName]:[]}));
+    setNewCatName("");
+    setAddCatModal(false);
+    showToast("Catégorie ajoutée");
+  };
+
+  const moveCatUp = (cat) => {
+    const idx = catOrder.indexOf(cat);
+    if (idx === 0) return;
+    const newOrder = [...catOrder];
+    [newOrder[idx-1], newOrder[idx]] = [newOrder[idx], newOrder[idx-1]];
+    setCatOrder(newOrder);
+  };
+
+  const moveCatDown = (cat) => {
+    const idx = catOrder.indexOf(cat);
+    if (idx === catOrder.length-1) return;
+    const newOrder = [...catOrder];
+    [newOrder[idx], newOrder[idx+1]] = [newOrder[idx+1], newOrder[idx]];
+    setCatOrder(newOrder);
+  };
+
+  const addPrestation = (cat) => {
+    const newId = Date.now();
+    const newP = {id:newId, nom:"Nouvelle prestation", duree:30, prix:0, couleur:"#c9a84c", deleted:false};
+    setPrestations(prev=>({...prev,[cat]:[...prev[cat],newP]}));
+    openEdit(newP, cat);
+  };
 
   return (
     <div style={{padding:24}}>
-      <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
-        <Btn variant="link">⊕ Ajouter une catégorie de prestations</Btn>
-        <Btn variant="link">≡ Ordonner les catégories</Btn>
-        <Btn variant="link">👁 Afficher les prestations supprimées</Btn>
-        <Btn variant="link" style={{marginLeft:"auto"}}>€ Éditer les prix en masse</Btn>
-      </div>
-      {Object.entries(prestations).map(([cat,items])=>(
-        <div key={cat} style={{marginBottom:24}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f9fafb",padding:"10px 16px",borderRadius:6,marginBottom:2}}>
-            <span style={{fontWeight:600,fontSize:15}}>{cat}</span>
-            <div style={{display:"flex",gap:16}}>
-              <Btn variant="link" small>Ajouter une prestation</Btn>
-              <Btn variant="link" small>Ordonner</Btn>
-              <Btn variant="link" small>Dupliquer</Btn>
-              <Btn variant="link" small>Modifier</Btn>
-              <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
-            </div>
-          </div>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr style={{borderBottom:"1px solid #e5e7eb"}}>
-              <th style={{padding:"8px 12px",textAlign:"left",fontSize:12,color:"#6b7280",fontWeight:500}}>Prestation</th>
-              <th style={{padding:"8px 12px",textAlign:"left",fontSize:12,color:"#6b7280",fontWeight:500}}>Durée</th>
-              <th style={{padding:"8px 12px",textAlign:"left",fontSize:12,color:"#6b7280",fontWeight:500}}>Prix</th>
-              <th style={{padding:"8px 12px",textAlign:"left",fontSize:12,color:"#6b7280",fontWeight:500}}>Actions</th>
-            </tr></thead>
-            <tbody>
-              {items.map(p=>(
-                <tr key={p.id} style={{borderBottom:"1px solid #f3f4f6"}}>
-                  <td style={{padding:"12px 12px",fontSize:14,display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{width:4,height:20,background:p.couleur||"#c9a84c",borderRadius:2}} />
-                    {p.nom}
-                  </td>
-                  <td style={{padding:"12px 12px",fontSize:14,color:"#6b7280"}}>{p.duree} min</td>
-                  <td style={{padding:"12px 12px",fontSize:14,color:"#c9a84c",fontWeight:500}}>{fmt(p.prix)}</td>
-                  <td style={{padding:"12px 12px"}}>
-                    <span style={{color:"#6b7280",cursor:"pointer",fontSize:13,marginRight:12}}>Dupliquer</span>
-                    <span onClick={()=>openEdit(p)} style={{color:"#c9a84c",cursor:"pointer",fontSize:13,marginRight:12}}>Modifier</span>
-                    <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+      {toast && <div style={{position:"fixed",top:20,right:20,background:"#374151",color:"#fff",padding:"10px 20px",borderRadius:8,zIndex:2000,fontSize:14}}>{toast}</div>}
 
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+        <button onClick={()=>setAddCatModal(true)} style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>⊕ Ajouter une catégorie de prestations</button>
+        <button onClick={()=>setReorderMode(r=>!r)} style={{background:"none",border:"none",color:reorderMode?"#4a9eff":"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>≡ {reorderMode?"Terminer l'ordre":"Ordonner les catégories"}</button>
+        <button onClick={()=>setShowDeleted(s=>!s)} style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline",marginLeft:"auto"}}>👁 {showDeleted?"Masquer les supprimées":"Afficher les prestations supprimées"}</button>
+        <button style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>€ Éditer les prix en masse</button>
+      </div>
+
+      {catOrder.filter(cat=>prestations[cat]).map((cat)=>{
+        const items = prestations[cat] || [];
+        const visible = showDeleted ? items : items.filter(p=>!p.deleted);
+        return (
+          <div key={cat} style={{marginBottom:24}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f9fafb",padding:"10px 16px",borderRadius:6,marginBottom:2}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                {reorderMode && (
+                  <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                    <button onClick={()=>moveCatUp(cat)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6b7280",lineHeight:1}}>▲</button>
+                    <button onClick={()=>moveCatDown(cat)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6b7280",lineHeight:1}}>▼</button>
+                  </div>
+                )}
+                <span style={{fontWeight:600,fontSize:15}}>{cat}</span>
+              </div>
+              <div style={{display:"flex",gap:12}}>
+                <button onClick={()=>addPrestation(cat)} style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>Ajouter une prestation</button>
+                <button onClick={()=>deleteCategory(cat)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer la catégorie</button>
+              </div>
+            </div>
+            {visible.length === 0 && <div style={{padding:"12px 16px",color:"#9ca3af",fontSize:13}}>Aucune prestation{showDeleted?"":" active"}.</div>}
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead>
+                {visible.length>0 && <tr style={{borderBottom:"1px solid #e5e7eb"}}>
+                  <th style={{padding:"6px 12px",textAlign:"left",fontSize:11,color:"#9ca3af",fontWeight:500}}>Prestation</th>
+                  <th style={{padding:"6px 12px",textAlign:"left",fontSize:11,color:"#9ca3af",fontWeight:500}}>Durée</th>
+                  <th style={{padding:"6px 12px",textAlign:"left",fontSize:11,color:"#9ca3af",fontWeight:500}}>Prix</th>
+                  <th style={{padding:"6px 12px",textAlign:"left",fontSize:11,color:"#9ca3af",fontWeight:500}}>Actions</th>
+                </tr>}
+              </thead>
+              <tbody>
+                {visible.map(p=>(
+                  <tr key={p.id} style={{borderBottom:"1px solid #f3f4f6",opacity:p.deleted?0.5:1}}>
+                    <td style={{padding:"12px 12px",fontSize:14,display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:4,height:20,background:p.couleur||"#c9a84c",borderRadius:2,flexShrink:0}} />
+                      <span style={{textDecoration:p.deleted?"line-through":"none"}}>{p.nom}</span>
+                      {p.deleted && <span style={{background:"#fee2e2",color:"#991b1b",fontSize:10,padding:"1px 6px",borderRadius:4}}>Supprimée</span>}
+                    </td>
+                    <td style={{padding:"12px",fontSize:14,color:"#6b7280"}}>{p.duree} min</td>
+                    <td style={{padding:"12px",fontSize:14,color:"#c9a84c",fontWeight:500}}>{p.prix===0?"Gratuit":`${p.prix},00 €`}</td>
+                    <td style={{padding:"12px"}}>
+                      {p.deleted ? (
+                        <button onClick={()=>restorePrestation(cat,p.id)} style={{background:"none",border:"none",color:"#4a9eff",cursor:"pointer",fontSize:13}}>Restaurer</button>
+                      ) : (
+                        <>
+                          <button onClick={()=>openEdit({...p},cat)} style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,marginRight:12}}>Modifier</button>
+                          <button onClick={()=>deletePrestation(cat,p.id)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+
+      {/* Modal ajouter catégorie */}
+      {addCatModal && (
+        <Modal title="Nouvelle catégorie" onClose={()=>setAddCatModal(false)} width="400px">
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <input value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="Nom de la catégorie" style={{padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} onKeyDown={e=>e.key==="Enter"&&addCategory()} />
+            <button onClick={addCategory} style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"10px",cursor:"pointer",fontSize:14,fontWeight:600}}>Créer</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal modifier prestation */}
       {editModal && (
-        <Modal title="Modifier une prestation" onClose={()=>setEditModal(null)} width="700px">
+        <Modal title={editData.id===editModal.p.id&&editModal.p.nom==="Nouvelle prestation"?"Nouvelle prestation":"Modifier une prestation"} onClose={()=>setEditModal(null)} width="700px">
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>NOM</label>
-              <input value={editData.nom} onChange={e=>setEditData(d=>({...d,nom:e.target.value}))} style={{padding:"8px 12px",border:"2px solid #4a9eff",borderRadius:6,fontSize:14}} />
+            {[["NOM","nom","text"],["ABRÉVIATION","abrev","text"]].map(([label,field,type])=>(
+              <div key={field} style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:12,alignItems:"center"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>{label}</label>
+                <input type={type} value={editData[field]||""} onChange={e=>setEditData(d=>({...d,[field]:e.target.value}))} style={{padding:"8px 12px",border:field==="nom"?"2px solid #4a9eff":"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+              </div>
+            ))}
+            <div style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:12,alignItems:"start"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:8}}>DESCRIPTION</label>
+              <textarea value={editData.description||""} onChange={e=>setEditData(d=>({...d,description:e.target.value}))} style={{padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,minHeight:70,resize:"vertical"}} />
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>ABRÉVIATION</label>
-              <input value={editData.abrev} onChange={e=>setEditData(d=>({...d,abrev:e.target.value}))} style={{padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"start"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:8}}>DESCRIPTION</label>
-              <textarea value={editData.description} onChange={e=>setEditData(d=>({...d,description:e.target.value}))} style={{padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14,minHeight:80,resize:"vertical"}} />
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"start"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:4}}>COULEUR</label>
+            <div style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:12,alignItems:"start"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:4}}>COULEUR</label>
               <div>
                 <div onClick={()=>setShowPalette(p=>!p)} style={{width:36,height:36,background:editData.couleur,borderRadius:6,cursor:"pointer",border:"2px solid #e5e7eb"}} />
                 {showPalette && (
-                  <div style={{marginTop:8,padding:8,border:"1px solid #e5e7eb",borderRadius:8,display:"inline-block",background:"#fff"}}>
-                    <div style={{display:"flex",gap:4,marginBottom:8}}>
-                      {["Nouvelles couleurs","Anciennes couleurs"].map((t,i)=>(
-                        <span key={t} style={{fontSize:12,padding:"2px 8px",cursor:"pointer",borderBottom:i===0?"2px solid #4a9eff":"2px solid transparent",color:i===0?"#4a9eff":"#6b7280"}}>{t}</span>
-                      ))}
-                    </div>
+                  <div style={{marginTop:8,padding:8,border:"1px solid #e5e7eb",borderRadius:8,display:"inline-block",background:"#fff",boxShadow:"0 4px 12px rgba(0,0,0,0.1)"}}>
                     {PALETTE.map((row,ri)=>(
                       <div key={ri} style={{display:"flex",gap:3,marginBottom:3}}>
                         {row.map((c,ci)=>(
-                          <div key={ci} onClick={()=>{setEditData(d=>({...d,couleur:c}));setShowPalette(false);}} style={{width:28,height:28,background:c,borderRadius:4,cursor:"pointer",border:editData.couleur===c?"2px solid #111":"2px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12}}>
+                          <div key={ci} onClick={()=>{setEditData(d=>({...d,couleur:c}));setShowPalette(false);}} style={{width:28,height:28,background:c,borderRadius:4,cursor:"pointer",border:editData.couleur===c?"3px solid #111":"2px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11}}>
                             {editData.couleur===c?"✓":""}
                           </div>
                         ))}
@@ -992,63 +1312,31 @@ function AdminPrestations() {
                 )}
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>PRIX TTC</label>
+            <div style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>PRIX TTC</label>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <input type="number" value={editData.prix} onChange={e=>setEditData(d=>({...d,prix:Number(e.target.value)}))} style={{width:80,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-                <span>€</span>
-                <span style={{color:"#9ca3af",fontSize:13}}>Ou à partir de</span>
-                <input type="number" placeholder="" style={{width:70,padding:"8px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-                <span>€</span>
-                <span style={{color:"#9ca3af",fontSize:13}}>jusqu'à</span>
-                <input type="number" placeholder="" style={{width:70,padding:"8px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-                <span>€</span>
+                <input type="number" value={editData.prix} onChange={e=>setEditData(d=>({...d,prix:Number(e.target.value)}))} style={{width:80,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} /> <span>€</span>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>DURÉE</label>
+            <div style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>DURÉE</label>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <input type="number" value={editData.duree} onChange={e=>setEditData(d=>({...d,duree:Number(e.target.value)}))} style={{width:80,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-                <span style={{color:"#6b7280"}}>min.</span>
+                <input type="number" value={editData.duree} onChange={e=>setEditData(d=>({...d,duree:Number(e.target.value)}))} style={{width:80,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} /> <span style={{color:"#6b7280"}}>min.</span>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"start"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:4}}>COMPÉTENCES</label>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,background:"#f9fafb",padding:12,borderRadius:6}}>
-                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14}}><input type="checkbox" defaultChecked style={{accentColor:"#4a9eff"}} /> Équipe</label>
-                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14}}><input type="checkbox" defaultChecked style={{accentColor:"#4a9eff"}} /> Elnagar</label>
-                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,gridColumn:"1/-1"}}><input type="checkbox" /> Plusieurs collaborateurs en même temps</label>
+            <div style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>VISIBILITÉ</label>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                {["Prestation réservable","Affichée mais non réservable","Masquée sur le portail"].map(v=>(
+                  <label key={v} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,cursor:"pointer"}}>
+                    <input type="radio" checked={editData.visibilite===v} onChange={()=>setEditData(d=>({...d,visibilite:v}))} /> {v}
+                  </label>
+                ))}
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>VISIBILITÉ</label>
-              <RadioGroup options={["Prestation réservable","Affichée mais non réservable","Masquée sur le portail"]} value={editData.visibilite} onChange={v=>setEditData(d=>({...d,visibilite:v}))} />
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>PRISE DE RDV EN LIGNE</label>
-              <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14}}>
-                <span>Jusqu'à</span>
-                <input type="number" value={editData.rdvDelai} onChange={e=>setEditData(d=>({...d,rdvDelai:Number(e.target.value)}))} style={{width:60,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-                <select style={{padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}}><option>heures</option><option>jours</option></select>
-                <span>avant le rendez-vous</span>
-              </div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>ANNULATION</label>
-              <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14}}>
-                <span>Jusqu'à</span>
-                <input type="number" value={editData.annulDelai} onChange={e=>setEditData(d=>({...d,annulDelai:Number(e.target.value)}))} style={{width:60,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-                <select style={{padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}}><option>heures</option><option>jours</option></select>
-                <span>avant le rendez-vous</span>
-              </div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>FRÉQUENCE DES CRÉNEAUX</label>
-              <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14}}>
-                <span>Proposer des RDV toutes les</span>
-                <input type="number" value={editData.frequence} onChange={e=>setEditData(d=>({...d,frequence:Number(e.target.value)}))} style={{width:60,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-                <span>minutes</span>
-              </div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+              <button onClick={()=>setEditModal(null)} style={{padding:"8px 20px",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",background:"#fff",fontSize:14}}>Annuler</button>
+              <button onClick={saveEdit} style={{padding:"8px 20px",background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontSize:14,fontWeight:600}}>Enregistrer</button>
             </div>
           </div>
         </Modal>
@@ -1140,86 +1428,169 @@ function AdminAffichageRDV() {
 
 // ── Admin : Produits
 function AdminProduits() {
+  const [produits, setProduits] = useState(
+    Object.fromEntries(Object.entries(PRODUITS_ADMIN).map(([k,v])=>[k,v.map(p=>({...p,deleted:false,stockMin:"",stockMax:""}))]))
+  );
+  const [catOrder, setCatOrder] = useState(Object.keys(PRODUITS_ADMIN));
   const [editModal, setEditModal] = useState(null);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [reorderMode, setReorderMode] = useState(false);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(null),2000); };
+
+  const updateStock = (cat, id, delta) => {
+    setProduits(prev=>({
+      ...prev,
+      [cat]: prev[cat].map(p => p.id===id ? {...p, stock: Math.max(0, p.stock+delta)} : p)
+    }));
+  };
+
+  const deleteProduct = (cat, id) => {
+    setProduits(prev=>({...prev,[cat]:prev[cat].map(p=>p.id===id?{...p,deleted:true}:p)}));
+    showToast("Produit supprimé");
+  };
+
+  const restoreProduct = (cat, id) => {
+    setProduits(prev=>({...prev,[cat]:prev[cat].map(p=>p.id===id?{...p,deleted:false}:p)}));
+    showToast("Produit restauré");
+  };
+
+  const saveProduct = () => {
+    const {cat, ...data} = editModal;
+    setProduits(prev=>({...prev,[cat]:prev[cat].map(p=>p.id===data.id?data:p)}));
+    setEditModal(null);
+    showToast("Produit modifié");
+  };
+
+  const moveCatUp = (cat) => {
+    const idx=catOrder.indexOf(cat); if(idx===0)return;
+    const o=[...catOrder]; [o[idx-1],o[idx]]=[o[idx],o[idx-1]]; setCatOrder(o);
+  };
+  const moveCatDown = (cat) => {
+    const idx=catOrder.indexOf(cat); if(idx===catOrder.length-1)return;
+    const o=[...catOrder]; [o[idx],o[idx+1]]=[o[idx+1],o[idx]]; setCatOrder(o);
+  };
+
   return (
     <div style={{padding:24}}>
+      {toast && <div style={{position:"fixed",top:20,right:20,background:"#374151",color:"#fff",padding:"10px 20px",borderRadius:8,zIndex:2000,fontSize:14}}>{toast}</div>}
       <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
-        <Btn variant="link">📄 Exporter</Btn>
-        <Btn variant="link">⊕ Ajouter une catégorie</Btn>
-        <Btn variant="link">≡ Ordonner les catégories</Btn>
-        <Btn variant="link">👁 Afficher les produits supprimés</Btn>
-        <input placeholder="Rechercher" style={{marginLeft:"auto",padding:"6px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:13,width:180}} />
+        <button style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>📄 Exporter</button>
+        <button style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>⊕ Ajouter une catégorie</button>
+        <button onClick={()=>setReorderMode(r=>!r)} style={{background:"none",border:"none",color:reorderMode?"#4a9eff":"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>≡ {reorderMode?"Terminer":"Ordonner les catégories"}</button>
+        <button onClick={()=>setShowDeleted(s=>!s)} style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline",marginLeft:"auto"}}>👁 {showDeleted?"Masquer":"Afficher les produits supprimés"}</button>
       </div>
-      {Object.entries(PRODUITS_ADMIN).map(([cat,items])=>(
-        <div key={cat} style={{marginBottom:20}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f9fafb",padding:"10px 16px",borderRadius:6,marginBottom:2}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{color:"#9ca3af",fontSize:18}}>▼</span>
-              <span style={{fontWeight:600,fontSize:15}}>{cat}</span>
-            </div>
-            <div style={{display:"flex",gap:16}}>
-              <Btn variant="link" small>Ajouter</Btn>
-              <Btn variant="link" small>Ordonner les produits</Btn>
-              <Btn variant="link" small>Modifier</Btn>
-              <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
-            </div>
-          </div>
-          {items.map(p=>(
-            <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid #f3f4f6",borderLeft:`3px solid ${p.couleur}`}}>
-              <span style={{fontSize:14}}><strong>{p.nom}</strong> <span style={{color:"#6b7280"}}>{p.prix},00 € - {p.stock} en stock</span></span>
-              <div>
-                <span onClick={()=>setEditModal(p)} style={{color:"#c9a84c",cursor:"pointer",fontSize:13,marginRight:16}}>Modifier</span>
-                <span style={{color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</span>
+
+      {catOrder.filter(cat=>produits[cat]).map(cat=>{
+        const items = produits[cat]||[];
+        const visible = showDeleted ? items : items.filter(p=>!p.deleted);
+        return (
+          <div key={cat} style={{marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f9fafb",padding:"10px 16px",borderRadius:6,marginBottom:2}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                {reorderMode && (
+                  <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                    <button onClick={()=>moveCatUp(cat)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#6b7280",lineHeight:1}}>▲</button>
+                    <button onClick={()=>moveCatDown(cat)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#6b7280",lineHeight:1}}>▼</button>
+                  </div>
+                )}
+                <span style={{color:"#9ca3af",fontSize:14}}>▼</span>
+                <span style={{fontWeight:600,fontSize:15}}>{cat}</span>
+              </div>
+              <div style={{display:"flex",gap:12}}>
+                <button style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>Ajouter</button>
+                <button style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>Ordonner les produits</button>
+                <button style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13,textDecoration:"underline"}}>Modifier</button>
+                <button style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</button>
               </div>
             </div>
-          ))}
-        </div>
-      ))}
+            {visible.map(p=>(
+              <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid #f3f4f6",borderLeft:`3px solid ${p.couleur||"#c9a84c"}`,opacity:p.deleted?0.5:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div>
+                    <span style={{fontSize:14,fontWeight:500,textDecoration:p.deleted?"line-through":"none"}}>{p.nom}</span>
+                    <span style={{color:"#6b7280",fontSize:13,marginLeft:8}}>{p.prix},00 € - <span style={{color:p.stock===0?"#ef4444":p.stock<=2?"#f59e0b":"#374151",fontWeight:p.stock<=2?600:400}}>{p.stock} en stock</span></span>
+                    {p.stock===0 && <span style={{background:"#fee2e2",color:"#991b1b",fontSize:10,padding:"1px 6px",borderRadius:4,marginLeft:6}}>Rupture</span>}
+                    {p.deleted && <span style={{background:"#fee2e2",color:"#991b1b",fontSize:10,padding:"1px 6px",borderRadius:4,marginLeft:6}}>Supprimé</span>}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  {!p.deleted && (
+                    <>
+                      {/* Stock +/- inline */}
+                      <div style={{display:"flex",alignItems:"center",border:"1px solid #d1d5db",borderRadius:6,overflow:"hidden"}}>
+                        <button onClick={()=>updateStock(cat,p.id,-1)} style={{width:26,height:26,background:"#f9fafb",border:"none",cursor:"pointer",fontSize:14,color:"#374151"}}>−</button>
+                        <span style={{width:28,textAlign:"center",fontSize:13,fontWeight:600}}>{p.stock}</span>
+                        <button onClick={()=>updateStock(cat,p.id,+1)} style={{width:26,height:26,background:"#f9fafb",border:"none",cursor:"pointer",fontSize:14,color:"#374151"}}>+</button>
+                      </div>
+                      <button onClick={()=>setEditModal({...p,cat})} style={{background:"none",border:"none",color:"#c9a84c",cursor:"pointer",fontSize:13}}>Modifier</button>
+                      <button onClick={()=>deleteProduct(cat,p.id)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:13}}>Supprimer</button>
+                    </>
+                  )}
+                  {p.deleted && (
+                    <button onClick={()=>restoreProduct(cat,p.id)} style={{background:"none",border:"none",color:"#4a9eff",cursor:"pointer",fontSize:13}}>Restaurer</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+
       {editModal && (
         <Modal title="Modifier un produit" onClose={()=>setEditModal(null)} width="600px">
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>LIBELLÉ</label>
-              <input defaultValue={editModal.nom} style={{padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>COULEUR</label>
-              <div style={{width:36,height:36,background:editModal.couleur,borderRadius:6,border:"2px solid #e5e7eb",cursor:"pointer"}} />
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>PRIX DE VENTE TTC</label>
+            {[["LIBELLÉ","nom","text"],["PRIX DE VENTE TTC","prix","number"]].map(([l,f,t])=>(
+              <div key={f} style={{display:"grid",gridTemplateColumns:"160px 1fr",gap:12,alignItems:"center"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>{l}</label>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <input type={t} value={editModal[f]} onChange={e=>setEditModal(m=>({...m,[f]:t==="number"?Number(e.target.value):e.target.value}))} style={{flex:1,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                  {f==="prix" && <span>€</span>}
+                </div>
+              </div>
+            ))}
+            <div style={{display:"grid",gridTemplateColumns:"160px 1fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>STOCK</label>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <input type="number" defaultValue={editModal.prix} style={{width:80,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-                <span>€</span>
+                <button onClick={()=>setEditModal(m=>({...m,stock:Math.max(0,m.stock-1)}))} style={{width:32,height:32,border:"1px solid #d1d5db",borderRadius:4,cursor:"pointer",background:"#fff",fontSize:16}}>−</button>
+                <span style={{fontWeight:600,fontSize:16,width:40,textAlign:"center"}}>{editModal.stock}</span>
+                <button onClick={()=>setEditModal(m=>({...m,stock:m.stock+1}))} style={{width:32,height:32,border:"1px solid #d1d5db",borderRadius:4,cursor:"pointer",background:"#fff",fontSize:16}}>+</button>
+                <span style={{color:"#6b7280",fontSize:12,marginLeft:8}}>Stock actuel</span>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>STOCK</label>
-              <div style={{display:"flex",alignItems:"center",gap:12}}>
-                <button style={{width:28,height:28,border:"1px solid #d1d5db",borderRadius:4,cursor:"pointer",background:"#fff",fontSize:16}}>-</button>
-                <span style={{fontWeight:600,fontSize:16,width:30,textAlign:"center"}}>{editModal.stock}</span>
-                <button style={{width:28,height:28,border:"1px solid #d1d5db",borderRadius:4,cursor:"pointer",background:"#fff",fontSize:16}}>+</button>
-                <Btn variant="link" small>État du stock</Btn>
-                <Btn variant="link" small>Historique</Btn>
-              </div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"start"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase",marginTop:4}}>STOCK MIN/MAX</label>
+            <div style={{display:"grid",gridTemplateColumns:"160px 1fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>STOCK MIN / MAX</label>
               <div style={{display:"flex",gap:12}}>
-                <div><div style={{fontSize:12,color:"#9ca3af",marginBottom:4}}>Stock minimum</div><input type="number" style={{width:80,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} /></div>
-                <div><div style={{fontSize:12,color:"#9ca3af",marginBottom:4}}>Stock maximum</div><input type="number" style={{width:80,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} /></div>
+                <div>
+                  <div style={{fontSize:11,color:"#9ca3af",marginBottom:4}}>Minimum</div>
+                  <input type="number" value={editModal.stockMin} onChange={e=>setEditModal(m=>({...m,stockMin:e.target.value}))} style={{width:80,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:"#9ca3af",marginBottom:4}}>Maximum</div>
+                  <input type="number" value={editModal.stockMax} onChange={e=>setEditModal(m=>({...m,stockMax:e.target.value}))} style={{width:80,padding:"6px 8px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
+                </div>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>TAUX DE TVA</label>
+            <div style={{display:"grid",gridTemplateColumns:"160px 1fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>TAUX DE TVA</label>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <input type="number" defaultValue={20} style={{width:70,padding:"8px 12px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} />
-                <span>%</span>
+                <input type="number" defaultValue={20} style={{width:70,padding:"8px 10px",border:"1px solid #d1d5db",borderRadius:6,fontSize:14}} /> <span>%</span>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 3fr",gap:12,alignItems:"center"}}>
-              <label style={{fontSize:12,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>TYPE</label>
-              <RadioGroup options={["Technique","Revente","Mixte"]} value="Revente" onChange={()=>{}} />
+            <div style={{display:"grid",gridTemplateColumns:"160px 1fr",gap:12,alignItems:"center"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"#6b7280",textTransform:"uppercase"}}>TYPE</label>
+              <div style={{display:"flex",gap:16}}>
+                {["Technique","Revente","Mixte"].map(t=>(
+                  <label key={t} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,cursor:"pointer"}}>
+                    <input type="radio" checked={editModal.type_produit===t} onChange={()=>setEditModal(m=>({...m,type_produit:t}))} /> {t}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+              <button onClick={()=>setEditModal(null)} style={{padding:"8px 20px",border:"1px solid #d1d5db",borderRadius:6,cursor:"pointer",background:"#fff",fontSize:14}}>Annuler</button>
+              <button onClick={saveProduct} style={{padding:"8px 20px",background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontSize:14,fontWeight:600}}>Enregistrer</button>
             </div>
           </div>
         </Modal>
@@ -2104,6 +2475,7 @@ export default function App() {
   const [tab, setTab] = useState("Agenda");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentTime, setCurrentTime] = useState(now());
+  const [showNotifs, setShowNotifs] = useState(false);
 
   useEffect(()=>{const t=setInterval(()=>setCurrentTime(now()),60000);return()=>clearInterval(t);},[]);
 
@@ -2126,9 +2498,9 @@ export default function App() {
           ))}
         </div>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
-          <span style={{color:"#e2e8f0",fontWeight:600,fontSize:15}}>{currentTime}</span>
+          <span style={{color:"#374151",fontWeight:600,fontSize:15}}>{currentTime}</span>
           <button style={{background:"#c9a84c",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>+ Nouveau RDV</button>
-          <button style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:20}}>🔔</button>
+          <button onClick={()=>setShowNotifs(s=>!s)} style={{background:"none",border:"none",color:showNotifs?"#c9a84c":"#94a3b8",cursor:"pointer",fontSize:20,position:"relative"}}>🔔</button>
         </div>
       </div>
 
